@@ -1,0 +1,469 @@
+// LOGGING
+
+#include <fstream>
+#include <iostream>
+#include <stack>
+#include <iomanip>
+#include <string>
+
+std::stack<const char *> lineNumberStack;
+
+void pushLineNumber(const char *s) {
+    lineNumberStack.push(s);
+}
+
+const char *popLineNumber() {
+    const char *s = lineNumberStack.top();
+    lineNumberStack.pop();
+    return s;
+}
+
+#define LOG_FILENAME "@FILENAME"
+
+std::ofstream *logFile = NULL;
+
+void initLog() {
+    if (!logFile) {
+        logFile = new std::ofstream(LOG_FILENAME);
+        *logFile << std::setprecision(16);
+    }
+}
+
+void Log(Int i) {
+    initLog();
+    *logFile << i;
+}
+
+void Log(Real x) {
+    initLog();
+    *logFile << x;
+}
+
+void Log(Boolean b) {
+    initLog();
+    *logFile << (b ? "true" : "false");
+}
+
+class SampleEnumeratorForLog : public SampleEnumerator {
+public:
+    SampleEnumeratorForLog(Pmf *pmf) : SampleEnumerator(pmf) {}
+    void recordSample();
+};
+
+void SampleEnumeratorForLog::recordSample() {
+    if (isPrevious)
+        *logFile << ",";
+    isPrevious = true;
+    
+    if (depth > 1)
+        *logFile << "(";
+
+    for (int i=1; i<=depth; i++) {
+        if (i>1)
+            *logFile << ",";
+        *logFile << records[i].value;
+    }
+
+    if (depth > 1)
+        *logFile << ")";
+
+    *logFile << ":" << records[depth].probability;
+}
+
+void Log(Pmf *pmf) {
+    initLog();
+    switch(pmf->pmfType) {
+        case SIMPLE:
+        case JOINT: {
+ 		    *logFile << "{";
+            SampleEnumeratorForLog *enumerator = new SampleEnumeratorForLog(pmf);
+            enumerator->run();
+            delete enumerator;
+		    *logFile << "}";
+            break;
+        }
+        case COMPOUND: {
+ 		    *logFile << "(";
+            bool isPrevious = false;
+            for (int i=0; i<pmf->compound.length; i++) {
+                if (isPrevious)
+                    *logFile << ",";
+                isPrevious = true;
+                Log(pmf->compound.elements[i]);
+            }
+ 		    *logFile << ")";
+            break;
+        }
+    }
+    logFile->flush();
+}
+
+void Log(IntArray *a) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<a->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(a->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(RealArray *a) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<a->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(a->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(BooleanArray *a) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<a->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(a->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(PmfArray *a) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<a->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(a->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(InterfaceArray *a) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<a->length; i++) {
+        if (i)
+            *logFile << ",";
+        *logFile << "0";
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(IntMatrix *m) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<m->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(m->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(RealMatrix *m) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<m->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(m->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(BooleanMatrix *m) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<m->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(m->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(PmfMatrix *m) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<m->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(m->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(InterfaceMatrix *m) {
+    initLog();
+    *logFile << "[";
+    for (int i=0; i<m->length; i++) {
+        if (i)
+            *logFile << ",";
+        Log(m->elements[i]);
+    }
+    *logFile << "]";
+    logFile->flush();
+}
+
+void Log(const char *header) {
+    initLog();
+    *logFile << header << std::endl;
+    logFile->flush();
+}
+
+void Log(const char *s1, const char *s2) {
+    initLog();
+    *logFile << s1 << s2 << std::endl;
+    logFile->flush();
+}
+
+void Log(const char *s1, Int index, const char *s2) {
+    initLog();
+    *logFile << s1 << index << s2 << std::endl;
+    logFile->flush();
+}
+
+void Log(const char *s1, int index1, const char *s2, int index2, const char *s3) {
+    initLog();
+    *logFile << s1 << index1 << s2 << index2 << s3 << std::endl;
+    logFile->flush();
+}
+
+Int Log(const char *header, Int i) {
+    initLog();
+    *logFile << header;
+    Log(i);
+    *logFile << std::endl;
+    logFile->flush();
+    return i;
+}
+
+Real Log(const char *header, Real x) {
+    initLog();
+    *logFile << header;
+    Log(x);
+    *logFile << std::endl;
+    logFile->flush();
+    return x;
+}
+
+Boolean Log(const char *header, Boolean b) {
+    initLog();
+    *logFile << header;
+    Log(b);
+    *logFile << std::endl;
+    logFile->flush();
+    return b;
+}
+
+Pmf *Log(const char *header, Pmf *pmf) {
+    initLog();
+    *logFile << header;
+    Log(pmf);
+    *logFile << std::endl;
+    logFile->flush();
+    return pmf;
+}
+
+IntArray *Log(const char *header, IntArray *a) {
+    initLog();
+    *logFile << header;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+RealArray *Log(const char *header, RealArray *a) {
+    initLog();
+    *logFile << header;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+BooleanArray *Log(const char *header, BooleanArray *a) {
+    initLog();
+    *logFile << header;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+PmfArray *Log(const char *header, PmfArray *a) {
+    initLog();
+    *logFile << header;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+InterfaceArray *Log(const char *header, InterfaceArray *a) {
+    initLog();
+    *logFile << header;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+IntMatrix *Log(const char *header, IntMatrix *m) {
+    initLog();
+    *logFile << header;
+    Log(m);
+    *logFile << std::endl;
+    logFile->flush();
+    return m;
+}
+
+RealMatrix *Log(const char *header, RealMatrix *m) {
+    initLog();
+    *logFile << header;
+    Log(m);
+    *logFile << std::endl;
+    logFile->flush();
+    return m;
+}
+
+BooleanMatrix *Log(const char *header, BooleanMatrix *m) {
+    initLog();
+    *logFile << header;
+    Log(m);
+    *logFile << std::endl;
+    logFile->flush();
+    return m;
+}
+
+PmfMatrix *Log(const char *header, PmfMatrix *m) {
+    initLog();
+    *logFile << header;
+    Log(m);
+    *logFile << std::endl;
+    logFile->flush();
+    return m;
+}
+
+InterfaceMatrix *Log(const char *header, InterfaceMatrix *m) {
+    initLog();
+    *logFile << header;
+    Log(m);
+    *logFile << std::endl;
+    logFile->flush();
+    return m;
+}
+
+Int Log(const char *headerA, Int index, const char *headerB, Int i) {
+    initLog();
+    *logFile << headerA << index << headerB << i << std::endl;
+    logFile->flush();
+    return i;
+}
+
+Real Log(const char *headerA, Int index, const char *headerB, Real x) {
+    initLog();
+    *logFile << headerA << index << headerB << x << std::endl;
+    logFile->flush();
+    return x;
+}
+
+Boolean Log(const char *headerA, Int index, const char *headerB, Boolean b) {
+    initLog();
+    *logFile << headerA << index << headerB << b << std::endl;
+    logFile->flush();
+    return b;
+}
+
+Pmf *Log(const char *headerA, Int index, const char *headerB, Pmf *pmf) {
+    initLog();
+    *logFile << headerA << index << headerB;
+    Log(pmf);
+    *logFile << std::endl;
+    logFile->flush();
+    return pmf;
+}
+
+Int Log(const char *headerA, Int index1, const char *headerB, Int index2, const char *headerC, Int i) {
+    initLog();
+    *logFile << headerA << index1 << headerB << index2 << headerC << i << std::endl;
+    logFile->flush();
+    return i;
+}
+
+Real Log(const char *headerA, Int index1, const char *headerB, Int index2, const char *headerC, Real x) {
+    initLog();
+    *logFile << headerA << index1 << headerB << index2 << headerC << x << std::endl;
+    logFile->flush();
+    return x;
+}
+
+Boolean Log(const char *headerA, Int index1, const char *headerB, Int index2, const char *headerC, Boolean b) {
+    initLog();
+    *logFile << headerA << index1 << headerB << index2 << headerC << b << std::endl;
+    logFile->flush();
+    return b;
+}
+
+Pmf *Log(const char *headerA, Int index1, const char *headerB, Int index2, const char *headerC, Pmf *pmf) {
+    initLog();
+    *logFile << headerA << index1 << headerB << index2 << headerC;
+    Log(pmf);
+    *logFile << std::endl;
+    logFile->flush();
+    return pmf;
+}
+
+IntArray *Log(const char *headerA, Int index, const char *headerB, IntArray *a) {
+    initLog();
+    *logFile << headerA << index << headerB;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+RealArray *Log(const char *headerA, Int index, const char *headerB, RealArray *a) {
+    initLog();
+    *logFile << headerA << index << headerB;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+BooleanArray *Log(const char *headerA, Int index, const char *headerB, BooleanArray *a) {
+    initLog();
+    *logFile << headerA << index << headerB;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
+void Log(const char *header, Int val, Real prob) {
+    initLog();
+    *logFile << header << val << ":" << prob << std::endl;
+    logFile->flush();
+}
+
+void Log(const char *header, IntArray *val, Real prob) {
+    initLog();
+    *logFile << header << "[" << val->elements[0] << "," << val->elements[1] << "]:" << prob << std::endl;
+    logFile->flush();
+}
+

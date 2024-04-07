@@ -1,0 +1,17 @@
+RELEASE NOTES 
+@VERSION@
+
+REQUIREMENTS
+  Python 3 
+  Java runtime (to execute the Q compiler)
+  C compiler (to build the extension module)
+  Setuptools (Python package) (to build the extension module)
+
+FILES IN THE RELEASE
+
+@LIST@
+
+TO TEST THIS RELEASE
+
+python3 qcompile.py testengine TestEngine.q
+python3 test.py

@@ -1,0 +1,2110 @@
+#include "Python.h"
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <algorithm>
+#include "structmember.h"
+
+// EXCEPTIONS
+
+PyObject *PException;
+
+class CException {
+public:
+    CException(const char *_message) : message(_message) {}
+    const char *message;
+};
+
+void abort(const char *_message) {
+    throw CException(_message);
+}
+
+void abortInternal() {
+    abort("QPLEX internal error");
+}
+
+void abortImport() {
+    abort("Invalid value");
+}
+
+double checkDenominator(double x) {
+    if (x == 0)
+        abort("Divide by zero");
+    else
+        return x;
+}
+
+// SCALAR TYPES
+
+typedef int Int;
+typedef double Real;
+typedef bool Boolean;
+
+enum PmfType { SIMPLE, JOINT, COMPOUND };
+
+// STRUCT TYPES
+
+#define sizeOfStructWithArraySize(type, array, length) (offsetof(type, array[0]) + (length) * (offsetof(type, array[1]) - offsetof(type, array[0])))
+
+typedef struct MemHeader {
+    MemHeader *next;
+    size_t size;
+    bool flag;
+} MemHeader;
+
+typedef struct {
+} SimplePmfConfigOverlay;
+
+typedef struct {
+    int depth;
+} JointPmfConfigOverlay;
+
+typedef struct {
+    int length;
+    int depths[];
+} CompoundPmfConfigOverlay;
+
+typedef struct PmfConfig {
+    MemHeader memHeader;
+    PmfType pmfType;
+    union {
+        SimplePmfConfigOverlay simple;
+        JointPmfConfigOverlay joint;
+        CompoundPmfConfigOverlay compound;
+    };
+} PmfConfig;
+
+struct Pmf;
+typedef struct {
+    int offset, length;
+    Real elements[1];
+} SimplePmfOverlay;
+
+typedef struct {
+    int depth;
+    Pmf *marginal;
+    Pmf *elements[1];
+} JointPmfOverlay;
+
+typedef struct {
+    int length;
+    Pmf *elements[1];
+} CompoundPmfOverlay;
+
+typedef struct Pmf {
+    MemHeader memHeader;
+    PmfType pmfType;
+    union {
+        SimplePmfOverlay simple;
+        JointPmfOverlay joint;
+        CompoundPmfOverlay compound;
+    };
+} Pmf;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    Int elements[1];
+} IntArray;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    Real elements[1];
+} RealArray;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    Boolean elements[1];
+} BooleanArray;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    IntArray *elements[1];
+} IntMatrix;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    RealArray *elements[1];
+} RealMatrix;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    BooleanArray *elements[1];
+} BooleanMatrix;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    Pmf *elements[1];
+} PmfArray;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    PmfArray *elements[1];
+} PmfMatrix;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    void *elements[1];
+} InterfaceArray;
+
+typedef struct {
+    MemHeader memHeader;
+    int length;
+    InterfaceArray *elements[1];
+} InterfaceMatrix;
+
+// Q OBJECT AND MEMORY ALLOCATION
+
+typedef struct {
+    PyObject_HEAD
+    bool isMemModified;
+	MemHeader *memList;
+	int functionCount;
+	void **functionPointers;
+	const char **functionNames;
+	int *functionSignatureIndexes;
+	unsigned long long currentMemoryUse;
+	unsigned long long peakMemoryUse;
+} QObject;
+
+void *qmalloc(QObject *obj, size_t size) {
+    obj->isMemModified = true;
+	obj->currentMemoryUse += size;
+	if (obj->currentMemoryUse > obj->peakMemoryUse)
+	    obj->peakMemoryUse = obj->currentMemoryUse;
+
+    MemHeader *ptr = (MemHeader *) malloc(size);
+	if (!ptr)
+	    abort("Out of memory");
+
+    memset(ptr, 0, size);
+    
+    MemHeader *memHeader = (MemHeader *) ptr;
+    memHeader->next = obj->memList;
+    obj->memList = memHeader;
+    
+    ptr->size = size;
+    return ptr;
+}
+
+void release(QObject *obj) {
+    MemHeader *p = obj->memList;
+    obj->memList = NULL;
+    
+    while (p) {
+        MemHeader *next = p->next;
+        
+        if (p->flag) {
+            p->flag = false;
+            MemHeader *memHeader = (MemHeader *) p;
+            memHeader->next = obj->memList;
+            obj->memList = memHeader;
+        } else {
+            obj->currentMemoryUse -= p->size;
+            free(p);
+        }
+        
+        p = next;
+     }
+            
+     obj->isMemModified = false;
+}
+
+void dealloc(QObject *obj) {
+    release(obj);
+    Py_TYPE(obj)->tp_free((PyObject *) obj);
+}
+
+void _flag(void *ptr0) {
+    if (!ptr0)
+        return;
+    MemHeader *ptr = (MemHeader *) ptr0;
+    ptr->flag = true;
+}
+
+void flag(Pmf *pmf) {
+    if (!pmf)
+        return;
+    _flag(pmf);
+    switch(pmf->pmfType) {
+    case SIMPLE:
+        break;
+    case JOINT: {
+        flag(pmf->joint.marginal);
+        for (int i=0; i<pmf->joint.marginal->simple.length; i++)
+            flag(pmf->joint.elements[i]);   
+        break;
+    }
+    case COMPOUND:
+        for (int i=0; i<pmf->compound.length; i++)
+            flag(pmf->compound.elements[i]);   
+        break;
+    }
+}
+
+void flag(IntArray *a) {
+    _flag(a);
+}
+
+void flag(RealArray *a) {
+    _flag(a);
+}
+
+void flag(BooleanArray *a) {
+    _flag(a);
+}
+
+void flag(PmfArray *a) {
+    _flag(a);
+    for (int i=0; i<a->length; i++)
+      flag(a->elements[i]);
+}
+
+void flag(InterfaceArray *a) {
+    _flag(a);
+}
+
+void flag(IntMatrix *m) {
+    _flag(m);
+    for (int i=0; i<m->length; i++)
+      flag(m->elements[i]);
+}
+
+void flag(RealMatrix *m) {
+    _flag(m);
+    for (int i=0; i<m->length; i++)
+      flag(m->elements[i]);
+}
+
+void flag(BooleanMatrix *m) {
+    _flag(m);
+    for (int i=0; i<m->length; i++)
+      flag(m->elements[i]);
+}
+
+void flag(PmfMatrix *m) {
+    _flag(m);
+    for (int i=0; i<m->length; i++)
+      flag(m->elements[i]);
+}
+
+void flag(InterfaceMatrix *m) {
+    _flag(m);
+    for (int i=0; i<m->length; i++)
+      flag(m->elements[i]);
+}
+
+// SAMPLE ENUMERATOR
+
+typedef struct {
+    Int value;
+    Real probability;
+    Pmf *pmf;
+} SampleEnumeratorRecord;
+
+class SampleEnumerator {
+public:
+    bool isPrevious;
+    int depth, level;
+    SampleEnumeratorRecord *records;
+    SampleEnumerator(Pmf *_pmf);
+    virtual ~SampleEnumerator();
+    void run();
+    virtual void recordSample() = 0;
+};
+
+SampleEnumerator::SampleEnumerator(Pmf *pmf) : isPrevious(false) {
+    switch (pmf->pmfType) {
+        case SIMPLE:
+            depth = 1;
+            break;
+        case JOINT:
+            depth = pmf->joint.depth;
+            break;
+        case COMPOUND:
+            abortInternal();
+    }
+    
+    records = (SampleEnumeratorRecord *) malloc((depth+1) * sizeof(SampleEnumeratorRecord));
+    records[0].probability = 1;
+    records[0].pmf = pmf;
+    level = 0;
+}
+
+SampleEnumerator::~SampleEnumerator() {
+    free(records);
+}
+
+void SampleEnumerator::run() {
+    if (level == depth) {
+        recordSample();
+        return;
+    }
+    
+    Pmf *marginal;
+    switch (records[level].pmf->pmfType) {
+        case SIMPLE:
+            marginal = records[level].pmf;
+            break;
+        case JOINT:
+            marginal = records[level].pmf->joint.marginal;
+            break;
+        case COMPOUND:
+            abortInternal();
+    }
+    
+    level++;
+    for (int i=0; i<marginal->simple.length; i++) {
+        Real branchProbability = marginal->simple.elements[i];
+        if (branchProbability <= 0)
+            continue;
+        records[level].value = i + marginal->simple.offset;
+        records[level].probability = records[level-1].probability * branchProbability;
+        records[level].pmf = records[level-1].pmf->joint.elements[i];
+        run();
+    }
+    level--;
+}
+
+// ALLOCATE
+
+Pmf *allocateSimplePmf(QObject *obj, int offset, int length) {
+    size_t size = sizeOfStructWithArraySize(Pmf, simple.elements, length);
+    Pmf *pmf = (Pmf *) qmalloc(obj, size);
+    pmf->pmfType = SIMPLE;
+    pmf->simple.offset = offset;
+    pmf->simple.length = length;
+    return pmf;
+}
+
+Pmf *allocateJointPmf(QObject *obj, Pmf *marginal, int depth) {
+    size_t size = sizeOfStructWithArraySize(Pmf, joint.elements, marginal->simple.length);
+    Pmf *pmf = (Pmf *) qmalloc(obj, size);
+    pmf->pmfType = JOINT;
+    pmf->joint.marginal = marginal;
+    pmf->joint.depth = depth;
+    return pmf;
+}
+
+Pmf *allocateEmptyJointPmf(QObject *obj, int depth) {
+	Pmf *marginal = allocateSimplePmf(obj, 0, 0);
+	return allocateJointPmf(obj, marginal, depth);
+}
+
+Pmf *allocateCompoundPmf(QObject *obj, int length) {
+    size_t size = sizeOfStructWithArraySize(Pmf, compound.elements, length);
+    Pmf *pmf = (Pmf *) qmalloc(obj, size);
+    pmf->pmfType = COMPOUND;
+    pmf->compound.length = length;
+    return pmf;
+}
+
+PmfArray *allocatePmfArray(QObject *obj, int length) {
+    if (length <= 0)
+        abort("Invalid array size");
+
+    size_t size = sizeOfStructWithArraySize(PmfArray, elements, length);
+    PmfArray *a = (PmfArray *) qmalloc(obj, size);
+    a->length = length;
+    return a;
+}
+
+PmfMatrix *allocatePmfMatrix(QObject *obj, int rowCount, int columnCount) {
+    size_t size = sizeOfStructWithArraySize(PmfMatrix, elements, rowCount);
+    PmfMatrix *m = (PmfMatrix *) qmalloc(obj, size);
+    m->length = rowCount;
+
+    if (columnCount)
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = allocatePmfArray(obj, columnCount);
+
+    return m;
+}
+
+InterfaceArray *allocateInterfaceArray(QObject *obj, int length) {
+    if (length <= 0)
+        abort("Invalid array size");
+
+    size_t size = sizeOfStructWithArraySize(InterfaceArray, elements, length);
+    InterfaceArray *a = (InterfaceArray *) qmalloc(obj, size);
+    a->length = length;
+    return a;
+}
+
+InterfaceMatrix *allocateInterfaceMatrix(QObject *obj, int rowCount, int columnCount) {
+    size_t size = sizeOfStructWithArraySize(InterfaceMatrix, elements, rowCount);
+    InterfaceMatrix *m = (InterfaceMatrix *) qmalloc(obj, size);
+    m->length = rowCount;
+
+    if (columnCount)
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = allocateInterfaceArray(obj, columnCount);
+
+    return m;
+}
+
+// CREATE
+
+PmfConfig *createSimplePmfConfig(QObject *obj) {
+    size_t size = offsetof(PmfConfig, simple);
+    PmfConfig *pmfConfig = (PmfConfig *) qmalloc(obj, size);
+    pmfConfig->pmfType = SIMPLE;
+    return pmfConfig;
+}
+
+PmfConfig *createJointPmfConfig(QObject *obj, int depth) {
+    size_t size = offsetof(PmfConfig, joint) + sizeof(JointPmfConfigOverlay);
+    PmfConfig *pmfConfig = (PmfConfig *) qmalloc(obj, size);
+    pmfConfig->pmfType = JOINT;
+    pmfConfig->joint.depth = depth;
+    return pmfConfig;
+}
+
+PmfConfig *createCompoundPmfConfig(QObject *obj, int length, ...) {
+    size_t size = sizeOfStructWithArraySize(PmfConfig, compound.depths, length);
+    PmfConfig *pmfConfig = (PmfConfig *) qmalloc(obj, size);
+    pmfConfig->pmfType = COMPOUND;
+    pmfConfig->compound.length = length;
+    va_list valist;
+    va_start(valist, length);
+    for (int i = 0; i < length; i++) {
+        int depth = va_arg(valist, int);
+        pmfConfig->compound.depths[i] = depth;
+    }
+    va_end(valist);
+    return pmfConfig;
+}
+
+Pmf *createCompoundPmf(QObject *obj, int length, ...) {
+    Pmf *pmf = allocateCompoundPmf(obj, length);
+    va_list valist;
+    va_start(valist, length);
+    for (int i = 0; i < length; i++) {
+        Pmf *innerPmf = va_arg(valist, Pmf *);
+        pmf->compound.elements[i] = innerPmf;
+    }
+    va_end(valist);
+    return pmf;
+}
+
+IntArray *createIntArray(QObject *obj, int length) {
+    if (length <= 0)
+        abort("Invalid array size");
+    size_t size = sizeOfStructWithArraySize(IntArray, elements, length);
+    IntArray *a = (IntArray *) qmalloc(obj, size);
+    a->length = length;
+    return a;
+}
+
+RealArray *createRealArray(QObject *obj, int length) {
+    if (length <= 0)
+        abort("Invalid array size");
+    size_t size = sizeOfStructWithArraySize(RealArray, elements, length);
+    RealArray *a = (RealArray *) qmalloc(obj, size);
+    a->length = length;
+    return a;
+}
+
+BooleanArray *createBooleanArray(QObject *obj, int length) {
+    if (length <= 0)
+        abort("Invalid array size");
+    size_t size = sizeOfStructWithArraySize(BooleanArray, elements, length);
+    BooleanArray *a = (BooleanArray *) qmalloc(obj, size);
+    a->length = length;
+    return a;
+}
+
+Pmf *defaultPmf(QObject *obj, PmfConfig *);
+
+PmfArray *createPmfArray(QObject *obj, PmfConfig *pmfConfig, int length) {
+    if (length <= 0)
+        abort("Invalid array dimensions");
+    PmfArray *a = allocatePmfArray(obj, length);
+    if (pmfConfig) 
+        for (int i=0; i<length; i++)
+            a->elements[i] = defaultPmf(obj, pmfConfig);
+    return a;
+}
+
+InterfaceArray *createInterfaceArray(QObject *obj, void *defaultImplementation, int length) {
+    if (length <= 0)
+        abort("Invalid array dimensions");
+    InterfaceArray *a = allocateInterfaceArray(obj, length);
+    if (defaultImplementation)
+        for (int i=0; i<length; i++)
+            a->elements[i] = defaultImplementation;
+    return a;
+}
+
+IntMatrix *createIntMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount < 0)
+        abort("Invalid matrix dimensions");
+
+    size_t size = sizeOfStructWithArraySize(IntMatrix, elements, rowCount);
+    IntMatrix *m = (IntMatrix *) qmalloc(obj, size);
+    m->length = rowCount;
+
+    if (columnCount) 
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = createIntArray(obj, columnCount);
+    return m;
+}
+
+RealMatrix *createRealMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount < 0)
+        abort("Invalid matrix dimensions");
+
+    size_t size = sizeOfStructWithArraySize(RealMatrix, elements, rowCount);
+    RealMatrix *m = (RealMatrix *) qmalloc(obj, size);
+    m->length = rowCount;
+
+    if (columnCount) 
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = createRealArray(obj, columnCount);
+
+    return m;
+}
+
+BooleanMatrix *createBooleanMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount < 0)
+        abort("Invalid matrix dimensions");
+
+    size_t size = sizeOfStructWithArraySize(BooleanMatrix, elements, rowCount);
+    BooleanMatrix *m = (BooleanMatrix *) qmalloc(obj, size);
+    m->length = rowCount;
+
+    if (columnCount) 
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = createBooleanArray(obj, columnCount);
+
+    return m;
+}
+
+PmfMatrix *createPmfMatrix(QObject *obj, PmfConfig *pmfConfig, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount < 0)
+        abort("Invalid matrix dimensions");
+
+    PmfMatrix *m = allocatePmfMatrix(obj, rowCount, columnCount);
+    m->length = rowCount;
+
+    if (columnCount) 
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = createPmfArray(obj, pmfConfig, columnCount);
+
+    return m;
+}
+
+InterfaceMatrix *createInterfaceMatrix(QObject *obj, void *defaultImplementation, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount < 0)
+        abort("Invalid matrix dimensions");
+    
+    InterfaceMatrix *m = allocateInterfaceMatrix(obj, rowCount, columnCount);
+    m->length = rowCount;
+
+    if (columnCount)
+        for (int i=0; i<rowCount; i++)
+            m->elements[i] = createInterfaceArray(obj, defaultImplementation, columnCount);
+
+    return m;
+}
+
+Pmf *createAtomicSimplePmf(QObject *obj, Int value) {
+    Pmf *pmf = allocateSimplePmf(obj, value, 1);
+    pmf->simple.elements[0] = 1;
+    return pmf;
+}
+
+// DEFAULT
+
+Int defaultInt() {
+    return 0;
+}
+
+Real defaultReal() {
+    return 0;
+}
+
+Boolean defaultBoolean() {
+    return false;
+}
+
+Pmf *defaultJointPmf(QObject *obj, int depth) {
+    Pmf *defaultSimplePmf = createAtomicSimplePmf(obj, 0);
+    Pmf *pmf = defaultSimplePmf;
+ 	for (int i=2; i<=depth; i++) {
+        Pmf *newPmf = allocateJointPmf(obj, defaultSimplePmf, i);
+        newPmf->joint.elements[0] = pmf;
+        pmf = newPmf;
+    }
+    return pmf;
+}
+
+Pmf *defaultPmf(QObject *obj, PmfConfig *pmfConfig) {
+    switch(pmfConfig->pmfType) {
+        case SIMPLE:
+            return createAtomicSimplePmf(obj, 0);
+        case JOINT:
+            return defaultJointPmf(obj, pmfConfig->joint.depth);
+        case COMPOUND: {
+            int length = pmfConfig->compound.length;
+            Pmf *pmf = allocateCompoundPmf(obj, pmfConfig->compound.length);
+            for (int i=0; i<length; i++) {
+                int depth = pmfConfig->compound.depths[i];
+                if (depth == 1)
+                    pmf->compound.elements[i] = createAtomicSimplePmf(obj, 0);
+                else
+                    pmf->compound.elements[i] = defaultJointPmf(obj, depth);
+            }
+            return pmf;
+        }
+    }
+}
+
+IntArray *defaultIntArray(QObject *obj) {
+    return createIntArray(obj, 1);
+}
+
+RealArray *defaultRealArray(QObject *obj) {
+    return createRealArray(obj, 1);
+}
+
+BooleanArray *defaultBooleanArray(QObject *obj) {
+    return createBooleanArray(obj, 1);
+}
+
+PmfArray *defaultPmfArray(QObject *obj, PmfConfig *pmfConfig) {
+    PmfArray *a = allocatePmfArray(obj, 1);
+    a->elements[0] = defaultPmf(obj, pmfConfig);
+    return a;
+}
+
+IntMatrix *defaultIntMatrix(QObject *obj) {
+    return createIntMatrix(obj, 1,1);
+}
+
+RealMatrix *defaultRealMatrix(QObject *obj) {
+    return createRealMatrix(obj, 1,1);
+}
+
+BooleanMatrix *defaultBooleanMatrix(QObject *obj) {
+    return createBooleanMatrix(obj, 1,1);
+}
+
+PmfMatrix *defaultPmfMatrix(QObject *obj, PmfConfig *pmfConfig) {
+    PmfMatrix *m = allocatePmfMatrix(obj, 1, 1);
+    m->elements[0]->elements[0] = defaultPmf(obj, pmfConfig);
+    return m;
+}
+
+// INITIALIZE
+
+IntArray *initializeIntArray(QObject *obj, int length, ...) {
+    va_list valist;
+    va_start(valist, length);
+    IntArray *a = createIntArray(obj, length);
+    for (int i = 0; i < length; i++)
+        a->elements[i] = va_arg(valist, Int);
+    va_end(valist);
+    return a;
+}
+
+RealArray *initializeRealArray(QObject *obj, int length, ...) {
+    va_list valist;
+    va_start(valist, length);
+    RealArray *a = createRealArray(obj, length);
+    for (int i = 0; i < length; i++)
+        a->elements[i] = va_arg(valist, Real);
+    va_end(valist);
+    return a;
+}
+
+BooleanArray *initializeBooleanArray(QObject *obj, int length, ...) {
+    va_list valist;
+    va_start(valist, length);
+    BooleanArray *a = createBooleanArray(obj, length);
+    for (int i = 0; i < length; i++)
+        a->elements[i] = va_arg(valist, int);
+    va_end(valist);
+    return a;
+}
+
+PmfArray *initializePmfArray(QObject *obj, int length, ...) {
+    va_list valist;
+    va_start(valist, length);
+    PmfArray *a = allocatePmfArray(obj, length);
+    for (int i = 0; i < length; i++)
+        a->elements[i] = va_arg(valist, Pmf *);
+    va_end(valist);
+    return a;
+}
+
+InterfaceArray *initializeInterfaceArray(QObject *obj, int length, ...) {
+    va_list valist;
+    va_start(valist, length);
+    InterfaceArray *a = allocateInterfaceArray(obj, length);
+    for (int i = 0; i < length; i++)
+        a->elements[i] = va_arg(valist, void *);
+    va_end(valist);
+    return a;
+}
+
+IntMatrix *initializeIntMatrix(QObject *obj, int rowCount, ...) {
+    va_list valist;
+    va_start(valist, rowCount);
+    IntMatrix *m = createIntMatrix(obj, rowCount, 0);
+    for (int i = 0; i < rowCount; i++) {
+        int length = va_arg(valist, Int);
+        IntArray *a = createIntArray(obj, length);
+        for (int j = 0; j < length; j++)
+            a->elements[j] = va_arg(valist, Int);
+        m->elements[i] = a;
+    }
+    va_end(valist);
+    return m;
+}
+
+RealMatrix *initializeRealMatrix(QObject *obj, int rowCount, ...) {
+    va_list valist;
+    va_start(valist, rowCount);
+    RealMatrix *m = createRealMatrix(obj, rowCount, 0);
+    for (int i = 0; i < rowCount; i++) {
+        int length = va_arg(valist, Int);
+        RealArray *a = createRealArray(obj, length);
+        for (int j = 0; j < length; j++)
+            a->elements[j] = va_arg(valist, Real);
+        m->elements[i] = a;
+    }
+    va_end(valist);
+    return m;
+}
+
+BooleanMatrix *initializeBooleanMatrix(QObject *obj, int rowCount, ...) {
+    va_list valist;
+    va_start(valist, rowCount);
+    BooleanMatrix *m = createBooleanMatrix(obj, rowCount, 0);
+    for (int i = 0; i < rowCount; i++) {
+        int length = va_arg(valist, Int);
+        BooleanArray *a = createBooleanArray(obj, length);
+        for (int j = 0; j < length; j++)
+            a->elements[j] = va_arg(valist, Boolean);
+        m->elements[i] = a;
+    }
+    va_end(valist);
+    return m;
+}
+
+PmfMatrix *initializePmfMatrix(QObject *obj, int rowCount, ...) {
+    va_list valist;
+    va_start(valist, rowCount);
+    PmfMatrix *m = createPmfMatrix(obj, NULL, rowCount, 0);
+    for (int i = 0; i < rowCount; i++) {
+        int length = va_arg(valist, Int);
+        PmfArray *a = createPmfArray(obj, NULL, length);
+        for (int j = 0; j < length; j++)
+            a->elements[j] = va_arg(valist, Pmf *);
+        m->elements[i] = a;
+    }
+    va_end(valist);
+    return m;
+}
+
+InterfaceMatrix *initializeInterfaceMatrix(QObject *obj, int rowCount, ...) {
+    va_list valist;
+    va_start(valist, rowCount);
+    InterfaceMatrix *m = createInterfaceMatrix(obj, NULL, rowCount, 0);
+    for (int i = 0; i < rowCount; i++) {
+        int length = va_arg(valist, Int);
+        InterfaceArray *a = createInterfaceArray(obj, NULL, length);
+        for (int j = 0; j < length; j++)
+            a->elements[j] = va_arg(valist, void *);
+        m->elements[i] = a;
+    }
+    va_end(valist);
+    return m;
+}
+
+// ARRAY LOOKUP
+
+Int &lookup(IntArray *a, Int i) {
+    if (i >= 0 && i < a->length)
+        return a->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+Real &lookup(RealArray *a, Int i) {
+    if (i >= 0 && i < a->length)
+        return a->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+Boolean &lookup(BooleanArray *a, Int i) {
+    if (i >= 0 && i < a->length)
+        return a->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+Pmf *&lookup(PmfArray *a, Int i) {
+    if (i >= 0 && i < a->length)
+        return a->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+void *&lookup(InterfaceArray *a, Int i) {
+    if (i >= 0 && i < a->length)
+        return a->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+IntArray *&lookup(IntMatrix *m, Int i) {
+    if (i >= 0 && i < m->length)
+        return m->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+
+RealArray *&lookup(RealMatrix *m, Int i) {
+    if (i >= 0 && i < m->length)
+        return m->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+BooleanArray *&lookup(BooleanMatrix *m, Int i) {
+    if (i >= 0 && i < m->length)
+        return m->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+PmfArray *&lookup(PmfMatrix *m, Int i) {
+    if (i >= 0 && i < m->length)
+        return m->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+InterfaceArray *&lookup(InterfaceMatrix *m, Int i) {
+    if (i >= 0 && i < m->length)
+        return m->elements[i];
+    else
+        abort("Lookup index out of range");
+}
+
+// PMF LOOKUP
+
+Real lookupProbability(Pmf *pmf, Int i) {
+    if (i >= pmf->simple.offset && i < pmf->simple.offset+pmf->simple.length)
+        return pmf->simple.elements[i-pmf->simple.offset];
+    else
+        return 0;
+}
+
+Pmf *lookupMarginalPmf(Pmf *pmf) { 
+	return pmf->joint.marginal;
+}
+
+Pmf *lookupConditionalPmf(Pmf *pmf, Int length, ...)  { 
+    va_list valist;
+    va_start(valist, length);
+    for (int i=0; i<length; i++) {
+		int k = va_arg(valist, int);
+		if (lookupProbability(pmf->joint.marginal, k) == 0)
+            abort("Attempt to condition on a value of probability zero");
+        pmf = pmf->joint.elements[k - pmf->joint.marginal->simple.offset];
+	}
+    va_end(valist);
+    return pmf;
+}
+
+Pmf *lookupCompoundPmf(Pmf *pmf, Int i) {
+    return pmf->compound.elements[i];
+}
+
+// ACCUMULATORS
+
+class Accumulator {
+public:
+    Accumulator(QObject *_obj) : obj(_obj) {}
+    virtual ~Accumulator() {};
+    static Real sum;
+    QObject *obj;
+    virtual bool isEmpty() = 0;
+    virtual Accumulator *putSingle(Real probability, Int value) { abortInternal(); return this; }
+    virtual Accumulator *putDouble(Real probability, Int value1, Int value2) { abortInternal(); return this; }
+    virtual Accumulator *put(Real probability, ...);
+    virtual Accumulator *vput(Real probability, va_list &valist) = 0;
+    virtual Pmf *toPmf() = 0;
+    Pmf *toPmfAndDelete();
+};
+
+Real Accumulator::sum;
+
+Accumulator *Accumulator::put(Real probability, ...) {
+    if (probability <= 0)
+    	return this;
+    if (probability > 1)
+       probability = 1;
+
+    va_list valist;
+    va_start(valist, probability);
+    vput(probability, valist);
+    va_end(valist);
+    return this;
+}
+
+Pmf *Accumulator::toPmfAndDelete() {
+    Pmf *pmf = toPmf();
+    delete this;
+    return pmf;
+}
+
+class SimpleAccumulator : public Accumulator {
+public:
+    Int offset, length;
+    Real *elements;
+    SimpleAccumulator(QObject *obj) : Accumulator(obj), offset(0), length(0), elements(NULL) {}
+    ~SimpleAccumulator();
+    virtual bool isEmpty() { return elements == NULL; }
+    virtual SimpleAccumulator *putSingle(Real probability, Int value);
+    virtual Accumulator *vput(Real probability, va_list &valist);
+    Pmf *toPmf();
+};
+
+SimpleAccumulator::~SimpleAccumulator() {
+    if (elements)
+        free(elements);
+}
+
+// Bottleneck for execution speed.  Minimize ifs when range does not change.
+SimpleAccumulator *SimpleAccumulator::putSingle(Real probability, Int value) {
+    if (probability <= 0)
+    	return this;
+    if (probability > 1)
+       probability = 1;
+    
+    if (value < offset) {
+        if (value < 0)
+            abort("Negative integer in pmf support");
+    
+        if (length == 0) {
+            elements = (Real *) malloc(sizeof(Real));
+            elements[0] = probability;
+            offset = value;
+            length = 1;
+            return this;
+        }
+        
+        int newLength = 2 * (offset + length - value);
+        int newOffset = std::max(offset + length - newLength, 0);
+        Real *newElements = (Real *) malloc(newLength * sizeof(Real));
+        memset(newElements, 0, newLength * sizeof(Real));
+        memcpy(
+               &newElements[offset - newOffset],
+               elements,
+               length * sizeof(Real)
+        );
+        free(elements);
+        elements = newElements;
+        offset = newOffset;
+        length = newLength;
+    } else if (value >= offset + length) {
+        if (length == 0) {
+            elements = (Real *) malloc(sizeof(Real));
+            elements[0] = probability;
+            offset = value;
+            length = 1;
+            return this;
+        }
+        
+        int newLength = 2 * (1 + value - offset);
+        Real *newElements = (Real *) malloc(newLength * sizeof(Real));
+        memset(newElements, 0, newLength * sizeof(Real));
+        memcpy(
+               newElements,
+               elements,
+               length * sizeof(Real)
+        );
+        free(elements);
+        elements = newElements;
+        length = newLength;
+    }
+    
+    elements[value - offset] += probability;
+    return this;
+}
+
+Accumulator *SimpleAccumulator::vput(Real probability, va_list &valist) {
+    Int value = va_arg(valist, Int);
+    putSingle(probability, value);
+    return this;
+}
+
+Pmf *SimpleAccumulator::toPmf() {
+   if (length == 0)
+        abort("Empty pmf");
+    
+    int minValue = offset;
+    int maxValue = offset + length - 1;
+    while (elements[minValue - offset] == 0 && minValue <= maxValue)
+        minValue++;
+    while (elements[maxValue - offset] == 0 && maxValue >= minValue)
+        maxValue--;
+        
+    if (maxValue < minValue)
+        return allocateSimplePmf(obj, 0, 0);
+    
+    Pmf *newPmf = allocateSimplePmf(obj, minValue, 1 + maxValue - minValue);
+    memcpy(
+           newPmf->simple.elements,
+           &elements[minValue - offset],
+           (1 + maxValue - minValue) * sizeof(Real)
+    );
+    
+    sum = 0;
+    for (int i=0; i<newPmf->simple.length; i++)
+        sum += newPmf->simple.elements[i];
+    for (int i=0; i<newPmf->simple.length; i++)
+        newPmf->simple.elements[i] /= sum;
+    
+    return newPmf;
+}
+
+class JointAccumulator : public Accumulator {
+public:
+    int depth, offset, length;
+    Accumulator **elements;
+    JointAccumulator(QObject *obj, int _depth) : Accumulator(obj), depth(_depth), offset(0), length(0), elements(NULL) {}
+    ~JointAccumulator();
+    virtual bool isEmpty() { return elements == NULL; }
+    void include(Int value);
+    virtual Accumulator *putDouble(Real probability, Int value1, Int value2);
+    virtual Accumulator *vput(Real probability, va_list &valist);
+    void put_fromPy(Real probability, PyObject *pyValues);
+    Pmf *toPmf();
+};
+
+JointAccumulator::~JointAccumulator() {
+    if (elements) {
+        for (int i = 0; i<length; i++) {
+            delete elements[i];
+        }
+        free(elements);
+    }
+}
+
+Accumulator *JointAccumulator::vput(Real probability, va_list &valist) {
+    switch(depth) {
+        case 1:
+            abort();
+            break;
+        case 2: {
+            Int value1 = va_arg(valist, Int);
+            Int value2 = va_arg(valist, Int);
+            putDouble(probability, value1, value2);
+            break;
+        }
+        default: {
+            Accumulator *accumulator = this;
+            for (int i=depth; i>=2; i--) {
+                Int value = va_arg(valist, Int);
+                JointAccumulator *jointAccumulator = (JointAccumulator *) accumulator;
+                jointAccumulator->include(value);
+                accumulator = jointAccumulator->elements[value - jointAccumulator->offset];
+            }
+            
+            Int value = va_arg(valist, Int);
+            accumulator->putSingle(probability, value);
+            break;
+        }
+    }
+    return this;
+}
+
+// Bottleneck for execution speed.  Minimize ifs when range does not change.
+void JointAccumulator::include(Int value) {
+    if (value < offset) {
+        if (value < 0)
+            abort("Samples must be nonnegative integers");
+    
+        if (length == 0) {
+            offset = value;
+            length = 1;
+            elements = (Accumulator **) malloc(sizeof(Accumulator *));
+            elements[0] = depth > 2 ? (Accumulator *) new JointAccumulator(obj, depth-1) : (Accumulator *) new SimpleAccumulator(obj);
+            return;
+        }
+
+        int newLength = 2 * (offset + length - value);
+        int newOffset = std::max(offset + length - newLength, 0);
+        Accumulator **newElements = (Accumulator **) malloc(newLength * sizeof(Accumulator *));
+        memset(newElements, 0, newLength * sizeof(Accumulator *));
+        memcpy(
+               &newElements[offset - newOffset],
+               elements,
+               length * sizeof(Accumulator *)
+        );
+        free(elements);
+        elements = newElements;
+        offset = newOffset;
+        length = newLength;
+        for (int i=0; i<length; i++)
+            if (elements[i] == NULL)
+                elements[i] = depth > 2 ? (Accumulator *) new JointAccumulator(obj, depth-1) : (Accumulator *) new SimpleAccumulator(obj);
+    } else if (value >= offset + length) {
+        if (length == 0) {
+            offset = value;
+            length = 1;
+            elements = (Accumulator **) malloc(sizeof(Accumulator *));
+            elements[0] = depth > 2 ? (Accumulator *) new JointAccumulator(obj, depth-1) : (Accumulator *) new SimpleAccumulator(obj);
+            return;
+        }
+        
+        int newLength = 2 * (value + 1 - offset);
+        Accumulator **newElements = (Accumulator **) malloc(newLength * sizeof(Accumulator *));
+        memset(newElements, 0, newLength * sizeof(Accumulator *));
+        memcpy(
+               newElements,
+               elements,
+               length * sizeof(Accumulator *)
+        );
+        free(elements);
+        elements = newElements;
+        length = newLength;
+        for (int i=0; i<length; i++)
+            if (elements[i] == NULL)
+                elements[i] = depth > 2 ? (Accumulator *) new JointAccumulator(obj, depth-1) : (Accumulator *) new SimpleAccumulator(obj);
+    }
+}
+
+Accumulator *JointAccumulator::putDouble(Real probability, Int value1, Int value2) {
+    if (probability <= 0)
+    	return this;
+    if (probability > 1)
+       probability = 1;
+
+    include(value1);
+    SimpleAccumulator *accumulator = (SimpleAccumulator *) elements[value1 - offset];
+    accumulator->putSingle(probability, value2);
+    return this;
+}
+
+Int Int_fromPy(QObject *obj, PyObject *pyObj);
+void JointAccumulator::put_fromPy(Real probability, PyObject *pyValues) {
+    if (probability <= 0)
+    	return;
+    if (probability > 1)
+       probability = 1;
+
+    if (!PyTuple_Check(pyValues))
+        abortImport();
+    if (PyTuple_Size(pyValues) != depth)
+        abortImport();
+
+    Accumulator *accumulator = this;
+    for (int i=depth; i>=2; i--) {
+        Int value = Int_fromPy(obj, PyTuple_GET_ITEM(pyValues, depth-i));
+        JointAccumulator *jointAccumulator = (JointAccumulator *) accumulator;
+        jointAccumulator->include(value);
+        accumulator = jointAccumulator->elements[value - jointAccumulator->offset];
+    }
+    
+    Int value = Int_fromPy(obj, PyTuple_GET_ITEM(pyValues, depth-1));
+    SimpleAccumulator *simpleAccumulator = (SimpleAccumulator *) accumulator;
+    simpleAccumulator->putSingle(probability, value);
+}
+
+Pmf *JointAccumulator::toPmf() {
+    if (length == 0)
+        abort("Empty pmf");
+   
+    int minValue = offset;
+    int maxValue = offset + length - 1;
+    while (elements[minValue - offset]->isEmpty() && minValue <= maxValue)
+        minValue++;
+    while (elements[maxValue - offset]->isEmpty() && maxValue >= minValue)
+        maxValue--;
+        
+    if (maxValue < minValue)
+        return allocateEmptyJointPmf(obj, depth);
+   
+    Pmf *marginal = allocateSimplePmf(obj, minValue, maxValue+1-minValue);
+    Pmf *jointPmf = allocateJointPmf(obj, marginal, depth);
+    for (int value=minValue; value<=maxValue; value++) {
+         if (!elements[value-offset]->isEmpty()) {
+            jointPmf->joint.elements[value-minValue] = elements[value-offset]->toPmf();
+            marginal->simple.elements[value-minValue] = elements[value-offset]->sum;
+        }
+    }
+    sum = 0;
+    for (int i=0; i<marginal->simple.length; i++)
+        sum += marginal->simple.elements[i];
+    for (int i=0; i<marginal->simple.length; i++)
+        marginal->simple.elements[i] /= sum;
+    
+    return jointPmf;
+}
+
+class CompoundAccumulator : public Accumulator {
+public:
+    PmfConfig *pmfConfig;
+    Accumulator **elements;
+    CompoundAccumulator(QObject *obj, PmfConfig *pmfConfig);
+    ~CompoundAccumulator();
+    bool isEmpty() { return elements[0]->isEmpty(); }
+    virtual Accumulator *vput(Real probability, va_list &valist);
+    Pmf *toPmf();
+};
+
+CompoundAccumulator::CompoundAccumulator(QObject *obj, PmfConfig *_pmfConfig) : Accumulator(obj), pmfConfig(_pmfConfig) {
+    int length = pmfConfig->compound.length;
+    elements = (Accumulator **) malloc(length * sizeof(Accumulator *));
+    for (int i=0; i<length; i++) {
+        int depth = pmfConfig->compound.depths[i];
+        if (depth == 1)
+            elements[i] = new SimpleAccumulator(obj);
+        else
+            elements[i] = new JointAccumulator(obj, depth);
+    }
+}
+
+CompoundAccumulator::~CompoundAccumulator() {
+    int length = pmfConfig->compound.length;
+    for (int i=0; i<length; i++)
+        delete elements[i];
+    free(elements);
+}
+
+ Accumulator *CompoundAccumulator::vput(Real probability, va_list &valist) {
+    int length = pmfConfig->compound.length;
+    for (int i=0; i<length; i++)
+        elements[i]->vput(probability, valist);
+    return this;
+}
+
+Pmf *CompoundAccumulator::toPmf() {
+    if (isEmpty())
+        abort("Empty pmf");
+    
+    int length = pmfConfig->compound.length;
+    Pmf *pmf = allocateCompoundPmf(obj, length);
+    
+    for (int i=0; i<length; i++)
+        pmf->compound.elements[i] = elements[i]->toPmf();
+    
+    return pmf;
+}
+
+// BUILT-IN FUNCTIONS
+
+Int ifloor(Real x) {
+    return (int) floor(x);
+}
+
+Int iceiling(Real x) {
+    return (int) ceil(x);
+}
+
+Real safeSqrt(Real x) {
+	if (x < 0)
+		abort("Attempt to take square root of negative number");	
+	return sqrt(x);
+}
+
+Real safeLog(Real x) {
+	if (x < 0)
+		abort("Attempt to take log of negative number");	
+	return log(x);
+}
+
+Real safePow(Real x, Real y) {
+	Real z = pow(x, y);
+
+	// std::isnan is unavailable on some platforms.  
+	// Use this trick:  
+	// If z is nan or infinite, then z - z is nan.
+	// If e is nan, then e != e is true.	
+	Real e = z - z;
+	if (e != e)
+		abort("Invalid pow operation");	
+
+	return z;
+}
+
+Real randomReal() {
+    return rand() / (Real) RAND_MAX;
+}
+
+Int randomInt(int n) {
+    return rand() % n;
+}
+
+Pmf *createPmfFromRealArray(QObject *obj, RealArray *realArray) {
+    SimpleAccumulator a(obj);
+    for (int i=0; i<realArray->length; i++)
+        a.putSingle(realArray->elements[i], i);
+    return a.toPmf();
+}
+
+Int computeLeftTail(Pmf *pmf, Real epsilon) {
+    if (pmf->pmfType != SIMPLE)
+        abort("computeLeftTail requires simple pmf");
+
+    int offset = pmf->simple.offset;
+    int n = pmf->simple.length;
+    Real sum = 0;
+
+    for (int i=0; i<n; i++) {
+        sum += pmf->simple.elements[i];
+        if (sum >= epsilon)
+            return i + offset;
+    }
+
+    return n + offset;
+}	
+
+Int computeRightTail(Pmf *pmf, Real epsilon) {
+    if (pmf->pmfType != SIMPLE)
+        abort("computeRightTail requires simple pmf");
+
+    int offset = pmf->simple.offset;
+    int n = pmf->simple.length;
+    Real sum = 0;
+
+    for (int i=n-1; i>=0; i--) {
+        sum += pmf->simple.elements[i];
+        if (sum >= epsilon)
+            return i + offset;
+    }
+
+    return offset;
+}	
+
+Boolean isSamePmfInstance(Pmf *p, Pmf *q) {
+    return p == q;
+}
+
+Pmf *bernoulli(QObject *obj, Real p) {
+    if (p <= 0)
+        return (Pmf *) createAtomicSimplePmf(obj, 0);
+    if (p >= 1)
+        return (Pmf *) createAtomicSimplePmf(obj, 1);
+    Pmf *pmf = allocateSimplePmf(obj, 0, 2);
+    pmf->simple.elements[0] = 1-p;
+    pmf->simple.elements[1] = p;
+    return pmf;
+}
+
+Pmf *binomial(QObject *obj, int n, Real p) {
+    if (p <= 0)
+        return (Pmf *) createAtomicSimplePmf(obj, 0);
+    if (p >= 1)
+        return (Pmf *) createAtomicSimplePmf(obj, n);
+    Pmf *pmf = allocateSimplePmf(obj, 0, n+1);
+
+    Real logP = log(p);
+    Real logQ = log(1-p);
+    Real logR = logP - logQ;
+    Real x = n * logQ;
+    pmf->simple.elements[0] = exp(x);
+    for (int i=1; i<=n; i++) {
+        x += logR + log(n-(i-1)) - log(i);
+        pmf->simple.elements[i] = exp(x);
+    }
+    return pmf;
+}
+
+Pmf *multinomialLayer(QObject *obj, int n, int k, Real *gamma) {
+    if (k == 1)
+        return createAtomicSimplePmf(obj, n);
+    
+    Pmf *marginal = binomial(obj, n, gamma[0]);
+    Pmf *joint = allocateJointPmf(obj, marginal, k);
+    for (int i=0; i<=n; i++)
+        joint->joint.elements[i] = multinomialLayer(obj, n-i, k-1, gamma+1);
+    return joint;
+}
+
+Pmf *multinomial(QObject *obj, int n, int k, Pmf *p) {
+    if (p->pmfType != SIMPLE || p->simple.offset || p->simple.length != k)
+        abort("Invalid multinomial parameters");
+    Real *gamma = (Real *) malloc(sizeof(Real) * k);
+    Real r = 1;
+    for (int i=0; i<k-1; i++) {
+        Real q = p->simple.elements[i];
+        gamma[i] = q/r;
+        r -= q;
+    }
+    gamma[k-1] = 1;
+
+    Pmf *pmf = multinomialLayer(obj, n, k, gamma);
+    free(gamma);
+    return pmf;
+}
+
+double *createLogFactorialArrayForHypergeometric(int N) {
+    double *a = (double *) malloc((N+1) * sizeof(double));
+    double x = a[0] = 0;
+    for (int i=1; i<=N; i++)
+        x = a[i] = log(i) + x;
+    return a;
+}
+
+Pmf *hypergeometricHelper(QObject *obj, int N, int K, int n, double *logFactorialArray) {
+    int kMin = std::max(0, n + K - N);
+    int kMax = std::min(K, n);
+    int length = kMax + 1 - kMin;
+    
+    double fixedPart
+        = logFactorialArray[K] + logFactorialArray[N-K] - (logFactorialArray[N] - logFactorialArray[n] - logFactorialArray[N-n]);
+    
+    Pmf *pmf = allocateSimplePmf(obj, kMin, length);
+    for (int k = kMin; k <= kMax; k++)
+        pmf->simple.elements[k-kMin]
+            = exp(fixedPart - logFactorialArray[k] - logFactorialArray[K-k] - logFactorialArray[n-k] - logFactorialArray[N-K-(n-k)]);
+    
+    return pmf;
+}
+
+Pmf *hypergeometric(QObject *obj, int N, int K, int n) {
+    if (N < 0 || K < 0 || n < 0 || K > N || n > N)
+        abort("Invalid hypergeometric parameters");
+    double *logFactorialArray = createLogFactorialArrayForHypergeometric(N);
+    Pmf *pmf = hypergeometricHelper(obj, N, K, n, logFactorialArray);
+    free(logFactorialArray);
+    return pmf;
+}
+
+Pmf *multivariateHypergeometricLayer(QObject *obj, int N, int n, int d, int *b, double *logFactorialArray) {
+    if (d == 1)
+        return createAtomicSimplePmf(obj, n);
+    Pmf *marginal = hypergeometricHelper(obj, N, b[0], n, logFactorialArray);
+    Pmf *joint = allocateJointPmf(obj, marginal, d);
+    for (int i=0; i<marginal->simple.length; i++) {
+        int k = marginal->simple.offset+i;
+        joint->joint.elements[i]
+            = multivariateHypergeometricLayer(obj, N-b[0], n-k, d-1, b+1, logFactorialArray);
+    }
+    return joint;
+}
+
+Pmf *multivariateHypergeometric(QObject *obj, int N, int n, int d, IntArray *b) {
+   if (N < 0 || n < 0 || n > N || d != b->length)
+        abort("Invalid multivariateHypergeometric parameters");
+   
+   int checkN = 0;
+   for (int i=0; i<d; i++) {
+       int bb = b->elements[i];
+       if (bb < 0)
+           abort("Invalid multivariateHypergeometric parameters");
+       checkN += bb;
+   }
+   if (N != checkN)
+        abort("Invalid multivariateHypergeometric parameters");
+
+    double *logFactorialArray = createLogFactorialArrayForHypergeometric(N);
+    Pmf *pmf = multivariateHypergeometricLayer(obj, N, n, d, b->elements, logFactorialArray);
+    free(logFactorialArray);
+    return pmf;
+}
+
+// SAMPLING STACK
+
+class SamplingStack {
+private:
+    Real *a;
+public:
+    SamplingStack(int capacity) {
+        a = (Real *) malloc(capacity * sizeof(Real));
+    }
+    ~SamplingStack() {
+        free(a);
+    }
+    void set(int i, Real p) {
+        a[i] = p;
+    }
+    void branch(int i, Real p) {
+        a[i] = p * a[i-1];
+    }
+    Real branchProbability(int i) {
+        return a[i];
+    }
+};
+
+// PMF CONFIRMATION
+
+Pmf *confirmSimplePmf(Pmf *pmf) {
+    if (pmf->pmfType != SIMPLE)
+        abortImport();
+    
+    return pmf;
+}
+
+PmfArray *confirmSimplePmfArray(PmfArray *a) {
+    for (int i=0; i<a->length; i++)
+        confirmSimplePmf(a->elements[i]);
+    
+    return a;
+}
+
+PmfMatrix *confirmSimplePmfMatrix(PmfMatrix *m) {
+    for (int i=0; i<m->length; i++)
+        confirmSimplePmfArray(m->elements[i]);
+    
+    return m;
+}
+
+Pmf *confirmJointPmf(Pmf *pmf, int depth) {
+    if (pmf->pmfType != JOINT)
+        abortImport();
+    else if (pmf->joint.depth != depth)
+        abortImport();
+    
+    return pmf;
+}
+
+PmfArray *confirmJointPmfArray(PmfArray *a, int depth) {
+    for (int i=0; i<a->length; i++)
+        confirmJointPmf(a->elements[i], depth);
+    
+    return a;
+}
+
+PmfMatrix *confirmJointPmfMatrix(PmfMatrix *m, int depth) {
+    for (int i=0; i<m->length; i++)
+        confirmJointPmfArray(m->elements[i], depth);
+    return m;
+}
+
+Pmf *confirmCompoundPmf(Pmf *pmf, int length, ...) {
+    if (pmf->pmfType != COMPOUND)
+        abortImport();
+    else if (pmf->compound.length != length)
+        abortImport();
+    else {
+        va_list valist;
+        va_start(valist, length);
+        
+        for (int i=0; i<length; i++) {
+            Pmf *q = pmf->compound.elements[i];
+            int depth = va_arg(valist, int);
+            
+            if (depth == 1)
+                confirmSimplePmf(q);
+            else
+                confirmJointPmf(q, depth);
+        }
+        
+        va_end(valist);
+    }
+
+    return pmf;
+}
+
+PmfArray *confirmCompoundPmfArray(PmfArray *a, int length, ...) {
+    for (int i=0; i<a->length; i++) {
+        Pmf *pmf = a->elements[i];
+        
+        if (pmf->pmfType != COMPOUND)
+            abortImport();
+        else if (pmf->compound.length != length)
+            abortImport();
+        else {
+            va_list valist;
+            va_start(valist, length);
+            
+            for (int j=0; j<length; j++) {
+                Pmf *q = pmf->compound.elements[j];
+                int depth = va_arg(valist, int);
+                
+                if (depth == 1)
+                    confirmSimplePmf(q);
+                else
+                    confirmJointPmf(q, depth);
+            }
+            
+            va_end(valist);
+        }
+    }
+    
+    return a;
+}
+
+PmfMatrix *confirmCompoundPmfMatrix(PmfMatrix *m, int length, ...) {
+    for (int i=0; i<m->length; i++) {
+        PmfArray *a = m->elements[i];
+        
+        for (int j=0; j<a->length; j++) {
+            Pmf *pmf = a->elements[j];
+            if (pmf->pmfType != COMPOUND)
+                abortImport();
+            if (pmf->compound.length != length)
+                abortImport();
+            
+            va_list valist;
+            va_start(valist, length);
+            
+            for (int k=0; k<length; k++) {
+                Pmf *q = pmf->compound.elements[k];
+                int depth = va_arg(valist, int);
+                
+                if (depth == 1)
+                    confirmSimplePmf(q);
+                else
+                    confirmJointPmf(q, depth);
+            }
+            
+            va_end(valist);
+        }
+    }
+    
+    return m;
+}
+
+// PMF IMPORT/EXPORT
+
+PyObject *Int_toPy(QObject * obj, Int i) {
+    return PyLong_FromLong(i);
+}
+
+Int Int_fromPy(QObject * obj, PyObject *pyObj) {
+    if (!PyLong_Check(pyObj))
+        abortImport();
+    return PyLong_AsLong(pyObj);
+}
+
+PyObject *Real_toPy(QObject * obj, Real x) {
+    return PyFloat_FromDouble(x);
+}
+
+Real Real_fromPy(QObject * obj, PyObject *pyObj) {
+    if (PyFloat_Check(pyObj))
+        return PyFloat_AsDouble(pyObj);
+    if (PyLong_Check(pyObj))
+        return PyLong_AsDouble(pyObj);
+    abortImport();
+}
+
+PyObject *Boolean_toPy(QObject * obj, Boolean b) {
+    return PyBool_FromLong(b);
+}
+
+Boolean Boolean_fromPy(QObject * obj, PyObject *pyObj) {
+    return PyLong_AsLong(pyObj) != 0L;
+}
+
+class SampleEnumeratorFor_toPy : public SampleEnumerator {
+public:
+    QObject *obj;
+    PyObject *pyDict;
+    SampleEnumeratorFor_toPy(QObject *_obj, Pmf *pmf, PyObject *_pyDict) : obj(_obj), SampleEnumerator(pmf), pyDict(_pyDict) {}
+    void recordSample();
+};
+
+void SampleEnumeratorFor_toPy::recordSample() {
+    if (depth == 1) {
+        PyObject *key = Int_toPy(obj, records[1].value);
+        PyObject *value = Real_toPy(obj, records[depth].probability);
+        PyDict_SetItem(pyDict, key, value);
+        Py_DECREF(key);
+        Py_DECREF(value);
+    } else {
+        PyObject *key = PyTuple_New(depth);
+        for (int i=0; i<depth; i++)
+            PyTuple_SET_ITEM(key, i, Int_toPy(obj, records[i+1].value));
+        PyObject *value = Real_toPy(obj, records[depth].probability);
+        PyDict_SetItem(pyDict, key, value);
+        Py_DECREF(key);
+        Py_DECREF(value);
+    }
+}
+
+PyObject *Pmf_toPy(QObject *obj, Pmf *pmf) {
+     switch (pmf->pmfType) {
+        case SIMPLE:
+        case JOINT: {
+            PyObject *pyDict = PyDict_New();
+            SampleEnumeratorFor_toPy enumerator(obj, pmf, pyDict);
+            enumerator.run();
+            return pyDict;
+            break;
+        }
+        case COMPOUND: {
+            int n = pmf->compound.length;
+            PyObject *pyTuple = PyTuple_New(n);
+            for (int i=0; i<n; i++) {
+                PyObject *pyPmf = Pmf_toPy(obj, pmf->compound.elements[i]);
+                PyTuple_SET_ITEM(pyTuple, i, pyPmf);
+            }
+            return pyTuple;
+            break;
+        }
+    }
+}
+
+Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
+    PmfType pmfType;
+    int depth = -1;
+    
+    if (PyTuple_Check(pyObj))
+        pmfType = COMPOUND;
+    else if (PyDict_Check(pyObj)) {
+        PyObject *key, *value;
+        Py_ssize_t pos = 0;
+        if (!PyDict_Next(pyObj, &pos, &key, &value))
+           abort("Empty dictionary");
+        if (PyLong_Check(key))
+            pmfType = SIMPLE;
+        else if (PyTuple_Check(key)) {
+            pmfType = JOINT;
+            depth = PyTuple_Size(key);
+        } else
+            abortImport();
+     } else
+        abortImport();
+        
+    switch(pmfType) {
+        case SIMPLE: {
+            SimpleAccumulator a(obj);
+            PyObject *key, *value;
+            Py_ssize_t pos = 0;
+            while (PyDict_Next(pyObj, &pos, &key, &value))
+                a.putSingle(Real_fromPy(obj, value), Int_fromPy(obj, key));
+            return a.toPmf();
+        }
+        case JOINT: {
+            JointAccumulator a(obj, depth);
+            PyObject *key, *value;
+            Py_ssize_t pos = 0;
+            while (PyDict_Next(pyObj, &pos, &key, &value))
+                a.put_fromPy(Real_fromPy(obj, value), key);
+            return a.toPmf();
+        }
+        case COMPOUND: {
+            int n = PyTuple_Size(pyObj);
+            Pmf *pmf = allocateCompoundPmf(obj, n);
+            for (int i=0; i<n; i++)
+                pmf->compound.elements[i] = Pmf_fromPy(obj, PyTuple_GET_ITEM(pyObj, i));
+            return pmf;
+        }
+    }
+}
+PyObject *IntArray_toPy(QObject * obj, IntArray *a) {
+    int n = a->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SET_ITEM(pyList, i, Int_toPy(obj, a->elements[i]));
+    
+    return pyList;
+}
+
+IntArray *IntArray_fromPy(QObject * obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int n = (int) PyList_Size(pyObj);
+    if (n <= 0)
+        abortImport();
+
+    IntArray *a = createIntArray(obj, n);
+    
+    for (int i=0; i<n; i++)
+        a->elements[i] = Int_fromPy(obj, PyList_GET_ITEM(pyObj, i));
+    
+    return a;
+}
+
+PyObject *RealArray_toPy(QObject * obj, RealArray *a) {
+    int n = a->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SET_ITEM(pyList, i, Real_toPy(obj,a->elements[i]));
+    
+    return pyList;
+}
+
+RealArray *RealArray_fromPy(QObject * obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int n = (int) PyList_Size(pyObj);
+    if (n <= 0)
+        abortImport();
+    
+    RealArray *a = createRealArray(obj, n);
+    
+    for (int i=0; i<n; i++)
+        a->elements[i] = Real_fromPy(obj, PyList_GET_ITEM(pyObj, i));
+    
+    return a;
+}
+
+PyObject *BooleanArray_toPy(QObject * obj, BooleanArray *a) {
+    int n = a->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SET_ITEM(pyList, i, Boolean_toPy(obj, a->elements[i]));
+    
+    return pyList;
+}
+
+BooleanArray *BooleanArray_fromPy(QObject * obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int n = (int) PyList_Size(pyObj);
+    if (n <= 0)
+        abortImport();
+
+    BooleanArray *a = createBooleanArray(obj, n);
+    
+    for (int i=0; i<n; i++)
+        a->elements[i] = Boolean_fromPy(obj, PyList_GET_ITEM(pyObj, i));
+    
+    return a;
+}
+
+PyObject *PmfArray_toPy(QObject * obj, PmfArray *a) {
+    int n = a->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SET_ITEM(pyList, i, Pmf_toPy(obj, a->elements[i]));
+    
+    return pyList;
+}
+
+PmfArray *PmfArray_fromPy(QObject *obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int length = (int) PyList_Size(pyObj);
+    if (length <= 0)
+        abortImport();
+
+    PmfArray *a = allocatePmfArray(obj, length);
+    for (int i=0; i<length; i++)
+        a->elements[i] = Pmf_fromPy(obj, PyList_GET_ITEM(pyObj, i));
+    
+    return a;
+}
+
+IntMatrix *IntMatrix_fromPy(QObject *obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int rowCount = (int) PyList_Size(pyObj);
+    if (!rowCount)
+        abortImport();
+  
+    IntMatrix *m = createIntMatrix(obj, rowCount, 0);
+    
+    for (int i=0; i<rowCount; i++) {
+        PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
+        m->elements[i] = IntArray_fromPy(obj, pyRow);
+    }    
+
+    return m;
+}
+
+PyObject *IntMatrix_toPy(QObject * obj, IntMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, IntArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
+}
+
+PyObject *RealMatrix_toPy(QObject * obj, RealMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, RealArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
+}
+
+RealMatrix *RealMatrix_fromPy(QObject * obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int rowCount = (int) PyList_Size(pyObj);
+    if (!rowCount)
+        abortImport();
+  
+    RealMatrix *m = createRealMatrix(obj, rowCount, 0);
+    
+    for (int i=0; i<rowCount; i++) {
+        PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
+        m->elements[i] = RealArray_fromPy(obj, pyRow);
+    }    
+
+    return m;
+}
+
+PyObject *BooleanMatrix_toPy(QObject * obj, BooleanMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, BooleanArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
+}
+
+BooleanMatrix *BooleanMatrix_fromPy(QObject *obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int rowCount = (int) PyList_Size(pyObj);
+    if (!rowCount)
+        abortImport();
+  
+    BooleanMatrix *m = createBooleanMatrix(obj, rowCount, 0);
+    
+    for (int i=0; i<rowCount; i++) {
+        PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
+        m->elements[i] = BooleanArray_fromPy(obj, pyRow);
+    }    
+
+    return m;
+}
+
+PyObject *PmfMatrix_toPy(QObject * obj, PmfMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, PmfArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
+}
+
+PmfMatrix *PmfMatrix_fromPy(QObject *obj, PyObject *pyObj) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int rowCount = (int) PyList_Size(pyObj);
+    if (!rowCount)
+        abortImport();
+  
+    PmfMatrix *m = allocatePmfMatrix(obj, rowCount, 0);
+    
+    for (int i=0; i<rowCount; i++) {
+        PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
+        m->elements[i] = PmfArray_fromPy(obj, pyRow);
+    }    
+
+    return m;
+}
+
+const char *functionNameFromPointer(QObject *obj, void *fp) {
+    for (int i=0; i<obj->functionCount; i++) {
+        if (obj->functionPointers[i] == fp)
+            return obj->functionNames[i];
+    }
+    return "0";
+}
+
+void *functionPointerFromName(QObject *obj, int signatureIndex, const char *name) {
+    for (int i=0; i<obj->functionCount; i++) {
+        if (obj->functionSignatureIndexes[i] == signatureIndex && !strcmp(obj->functionNames[i], name))
+            return obj->functionPointers[i];
+    }
+    return NULL;
+}
+
+PyObject *Interface_toPy(QObject *obj, void *functionPtr) {
+    const char *name = functionNameFromPointer(obj, functionPtr);
+    return PyUnicode_FromString(name);
+}
+
+const char *Interface_fromPy(QObject *obj, PyObject *pyObj, int signatureIndex) {
+    if (!PyUnicode_Check(pyObj))
+        abortImport();
+    const char *name = PyUnicode_AsUTF8(pyObj);
+    if (!(functionPointerFromName(obj, signatureIndex, name)))
+        abortImport();
+    return name;
+}
+
+PyObject *InterfaceArray_toPy(QObject * obj, InterfaceArray *a) {
+    int n = a->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SET_ITEM(pyList, i, Interface_toPy(obj, a->elements[i]));
+    
+    return pyList;
+}
+
+InterfaceArray *InterfaceArray_fromPy(QObject *obj, PyObject *pyObj, int signatureIndex) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int length = (int) PyList_Size(pyObj);
+    if (length <= 0)
+         abortImport();
+
+    InterfaceArray *a = allocateInterfaceArray(obj, length);
+    for (int i=0; i<length; i++)
+        a->elements[i] = functionPointerFromName(
+            obj,
+            signatureIndex,
+            Interface_fromPy(
+                obj,
+                PyList_GET_ITEM(pyObj, i),
+                signatureIndex
+            )
+        );
+    
+    return a;
+}
+
+PyObject *InterfaceMatrix_toPy(QObject * obj, InterfaceMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, InterfaceArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
+}
+
+InterfaceMatrix *InterfaceMatrix_fromPy(QObject *obj, PyObject *pyObj, int signatureIndex) {
+    if (!PyList_Check(pyObj))
+        abortImport();
+    
+    int rowCount = (int) PyList_Size(pyObj);
+    if (!rowCount)
+        abortImport();
+  
+    InterfaceMatrix *m = allocateInterfaceMatrix(obj, rowCount, 0);
+    
+    for (int i=0; i<rowCount; i++) {
+        PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
+        m->elements[i] = InterfaceArray_fromPy(obj, pyRow, signatureIndex);
+    }    
+
+    return m;
+}
+

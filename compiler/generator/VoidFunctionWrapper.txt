@@ -1,0 +1,23 @@
+PyObject *_@OBJ_@NAME_Py(PyObject *pyObj, PyObject *args) {
+    _@OBJ_object *self = (_@OBJ_object *) pyObj;
+    try {
+        if (PyTuple_Size(args) != @NUM_PARAMS)
+            throw CException("Expected @NUM_PARAMS parameters");
+        @IF-LOG(pushLineNumber("Py    ");
+        @)@REPEAT(
+        @CTYPE arg@INDEX = @XTYPE_fromPy((QObject *) self, PyTuple_GET_ITEM(args, @INDEX));
+        @)
+ 		_@OBJ_@NAME(self@ALL_ARGS);
+		if (self->isMemModified)
+ 		    _@OBJ_memRelease(self);
+        Py_XINCREF(Py_None);
+    	return Py_None;
+
+    } catch (CException x) {
+		if (self->isMemModified)
+ 		    _@OBJ_memRelease(self);
+        PyErr_SetString(PException, x.message);
+ 	    return NULL;
+    }
+}
+

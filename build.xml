@@ -1,0 +1,146 @@
+<project>
+
+	<target name="clean">
+		<delete dir="build"/>
+	</target>
+
+	<target name="init" depends="clean">
+		<!-- Build fails if version.txt contains a line feed. -->
+		<loadfile property="version" srcFile="version.txt"/>
+
+		<mkdir dir="build"/>
+		<mkdir dir="build/tools"/>
+		<javac source="1.8" target="1.8" srcdir="tools" destdir="build/tools" excludes="QCompilerLauncher.java"/>
+	</target>
+
+	<target name="docs" depends="init">
+		<mkdir dir="build/docs"/>
+
+		<copy file="docs/guide.md" tofile="build/docs/guide.md"/>
+		<copy file="docs/release-notes.txt" tofile="build/docs/release-notes.txt"/>
+
+		<java classname="ReplaceInTextFile">
+			<classpath>
+				<pathelement location="build/tools"/>
+			</classpath>
+			<arg value="build/docs/guide.md"/>
+			<arg value="@VERSION@"/>
+			<arg value="${version}"/>
+		</java>
+
+		<java classname="ReplaceInTextFile">
+			<classpath>
+				<pathelement location="build/tools"/>
+			</classpath>
+
+			<arg value="build/docs/release-notes.txt"/>
+			<arg value="@VERSION@"/>
+			<arg value="${version}"/>
+		</java>
+
+		<exec executable="pandoc">
+			<arg line="build/docs/guide.md"/>
+			<arg line="-o"/>
+			<arg line="build/docs/guide.pdf"/>
+		</exec>
+	</target>
+
+	<target name="parser" depends="init">
+		<mkdir dir="build/parser"/>
+
+		<copy file="parser/q.jjt" tofile="build/parser/q.jjt"/>
+		<copy file="tools/javacc.jar" tofile="build/parser/javacc.jar"/>
+
+		<java fork="true" classname="org.javacc.jjtree.Main">
+			<classpath>
+				<pathelement location="build/parser/javacc.jar"/>
+			</classpath>
+
+			<arg value="-OUTPUT_DIRECTORY=build/parser"/>
+			<arg value="build/parser/q.jjt"/>
+		</java>
+
+		<java fork="true" classname="org.javacc.parser.Main">
+			<classpath>
+				<pathelement location="build/parser/javacc.jar"/>
+			</classpath>
+
+			<arg value="-OUTPUT_DIRECTORY=build/parser"/>
+			<arg value="build/parser/q.jj"/>
+		</java>
+	</target>
+
+	<target name="compiler" depends="parser">
+		<mkdir dir="build/compiler"/>
+
+		<copy todir="build/compiler">
+			<fileset dir="compiler">
+				<include name="**/*.*"/>
+			</fileset>
+		</copy>
+
+		<java classname="ReplaceInTextFile">
+			<classpath>
+				<pathelement location="build/tools"/>
+			</classpath>
+
+			<arg value="build/compiler/Version.java"/>
+			<arg value="@VERSION@"/>
+			<arg value="${version}"/>
+		</java>
+
+		<copy todir="build/compiler/parser">
+			<fileset dir="build/parser">
+				<include name="*.java"/>
+			</fileset>
+		</copy>
+
+		<javac source="1.8" target="1.8" srcdir="build/compiler" destdir="build/compiler"/>
+
+		<jar destfile="build/compiler/QCompiler.jar">
+			<fileset dir="build/compiler" excludes="*.java"/>
+			<manifest>
+				<attribute name="Main-Class" value="QCompiler"/>
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="qdk" depends="docs,parser,compiler">
+		<mkdir dir="build/qdk"/>
+
+		<copy todir="build/qdk">
+			<fileset dir="test">
+				<include name="*.*"/>
+			</fileset>
+		</copy>
+
+		<copy file="build/docs/guide.pdf" tofile="build/qdk/Q Developer Guide ${version}.pdf"/>
+		<copy file="build/docs/release-notes.txt" tofile="build/qdk/Release notes ${version}.txt"/>
+		<copy file="build/compiler/QCompiler.jar" tofile="build/qdk/QCompiler.jar"/>
+	
+		<java fork="true" dir="build/qdk" classname="ListInTextFile">
+			<classpath>
+				<pathelement location="build/tools"/>
+			</classpath>
+
+			<arg value="Release notes ${version}.txt"/>
+		</java>
+
+		<zip destfile="build/QDK-${version}.zip" basedir="build/qdk"/>
+	</target>
+
+	<target name="test" depends="qdk">
+		<mkdir dir="build/test"/>
+
+		<unzip src="build/QDK-${version}.zip" dest="build/test"/>
+
+		<exec dir="build/test" executable="python3" failonerror="true">
+			<arg line="qcompile.py testengine TestEngine.q"/>
+		</exec>
+
+		<exec dir="build/test" executable="python3" failonerror="true">
+			<arg line="test.py"/>
+		</exec>
+	</target>
+
+</project>

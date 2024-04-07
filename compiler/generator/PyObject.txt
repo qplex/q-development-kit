@@ -1,0 +1,10 @@
+typedef struct _@ENGINE_object {
+    PyObject_HEAD
+    bool isMemModified;
+    MemHeader *memList;
+    int functionCount;
+    void **functionPointers;
+    const char **functionNames;
+    int *functionSignatureIndexes;
+    unsigned long long currentMemoryUse;
+    unsigned long long peakMemoryUse;

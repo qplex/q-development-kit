@@ -1,0 +1,28 @@
+PyMODINIT_FUNC PyInit_@MODULE-NAME(void) {
+    PyObject *m;
+    @REPEAT(
+    if (PyType_Ready(&_@OBJECT-NAME_Type) < 0)
+        return NULL;
+    @)
+    m = PyModule_Create(&moduleDef);
+    if (m == NULL)
+        return NULL;
+    @REPEAT(
+    Py_INCREF(&_@OBJECT-NAME_Type);
+    if (PyModule_AddObject(m, "@OBJECT-NAME", (PyObject *) &_@OBJECT-NAME_Type) < 0) {
+        Py_DECREF(&_@OBJECT-NAME_Type);
+        Py_DECREF(m);
+        return NULL;
+    }
+    @)
+    PException = PyErr_NewException("@MODULE-NAME.error", NULL, NULL);
+    Py_XINCREF(PException);
+    if (PyModule_AddObject(m, "error", PException) < 0) {
+        Py_XDECREF(PException);
+        Py_CLEAR(PException);
+        Py_DECREF(m);
+        return NULL;
+    }
+
+    return m;
+}

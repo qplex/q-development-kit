@@ -1,0 +1,27 @@
+PyObject *_@ENGINE_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+    _@ENGINE_object *self;
+ 
+    if ( (args && PyTuple_Check(args) && PyTuple_Size(args)) 
+         || (kwds && PyDict_Check(kwds) && PyDict_Size(kwds)) ) {
+    	PyErr_SetString(PException, "Engine constructor does not take arguments");
+        return NULL;
+    } 
+ 
+    self = (_@ENGINE_object *) type->tp_alloc(type, 0);
+    if (self == NULL) 
+    	return NULL;
+
+    self->isMemModified = false;
+    self->memList = NULL;
+    self->functionCount = _@ENGINE_IMPLEMENTATION_COUNT;
+    self->functionPointers = _@ENGINE_functionPointers;
+    self->functionNames = _@ENGINE_functionNames;
+    self->functionSignatureIndexes = _@ENGINE_functionSignatureIndexes;
+    self->currentMemoryUse = 0;
+    self->peakMemoryUse = 0;
+
+	@REPEAT(self->_@NAME = @VALUE;
+	@)
+
+    return (PyObject *) self;
+}

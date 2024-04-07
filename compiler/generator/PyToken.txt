@@ -1,0 +1,4 @@
+PyObject *_@ENGINE_get_@NAME(PyObject *pyObj, PyObject *args) {
+    return PyLong_FromLong(_@ENGINE_token_@NAME);
+}
+

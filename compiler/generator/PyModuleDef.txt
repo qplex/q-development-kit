@@ -1,0 +1,8 @@
+static struct PyModuleDef moduleDef = {
+    PyModuleDef_HEAD_INIT,
+    "@MODULE",	// m_name
+    NULL,	// m_doc  
+    -1,		// m_size
+    NULL	// m_methods
+};
+

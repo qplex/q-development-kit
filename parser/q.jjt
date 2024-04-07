@@ -1,0 +1,810 @@
+/* Q language specification. */
+
+options {
+  NODE_DEFAULT_VOID = true;
+  TRACK_TOKENS = true;
+  NODE_FACTORY = "tree.NodeFactory";
+  NODE_PACKAGE = "parser";
+  STATIC = false;
+}
+
+PARSER_BEGIN(QParser)
+package parser;
+import tree.*;
+
+public class QParser {
+  public Node run() throws ParseException {
+    Root();
+    return jjtree.rootNode();
+  }
+}
+PARSER_END(QParser)
+
+
+SKIP :
+{
+  " "
+| "\t"
+| "\n"
+| "\r"
+| "\f"
+}
+
+MORE :
+{
+  "//" : IN_SINGLE_LINE_COMMENT
+|
+  "/*" : IN_MULTI_LINE_COMMENT
+}
+
+<IN_SINGLE_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+  <SINGLE_LINE_COMMENT: "\n" | "\r" | "\r\n" > : DEFAULT
+}
+
+<IN_MULTI_LINE_COMMENT>
+SPECIAL_TOKEN :
+{
+  <MULTI_LINE_COMMENT: "*/" > : DEFAULT
+}
+
+<IN_SINGLE_LINE_COMMENT,IN_MULTI_LINE_COMMENT>
+MORE :
+{
+  < ~[] >
+}
+
+TOKEN :
+{
+  < RESERVED1: "currentMemoryUse" >
+| < RESERVED2: "peakMemoryUse" >
+
+| < BOOLEAN: "boolean" >
+| < ELSE: "else" >
+| < FAIL: "fail" >
+| < FALSE: "false" >
+| < FOR: "for" >
+| < IF: "if" >
+| < INT: "int" >
+| < PUBLIC: "public" >
+| < REAL: "real" >
+| < RETURN: "return" >
+| < TO: "to" >
+| < QSKIP: "skip" >
+| < QTOKEN: "token" >
+| < TRUE: "true" >
+| < VOID: "void" >
+| < WHILE: "while" >
+
+| < INTARRAY: "IntArray" >
+| < REALARRAY: "RealArray" >
+| < BOOLEANARRAY: "BooleanArray" >
+| < INTMATRIX: "IntMatrix" >
+| < REALMATRIX: "RealMatrix" >
+| < BOOLEANMATRIX: "BooleanMatrix" >
+| < PMF: "Pmf" >
+| < PMFARRAY: "PmfArray" >
+| < PMFMATRIX: "PmfMatrix" >
+| < INTERFACE: "interface" >
+| < INTERFACEARRAY: "InterfaceArray" >
+| < INTERFACEMATRIX: "InterfaceMatrix" >
+
+| < BERNOULLI: "bernoulli" >
+| < BINOMIAL: "binomial" >
+| < BRANCHPROBABILITY: "branchProbability" >
+| < CEILING: "ceiling" >
+| < COMPUTELEFTTAIL: "computeLeftTail" >
+| < COMPUTERIGHTTAIL: "computeRightTail" >
+| < CREATEINTARRAY : "createIntArray" >
+| < CREATEINTERFACEARRAY : "createInterfaceArray" >
+| < CREATEREALARRAY : "createRealArray" >
+| < CREATEBOOLEANARRAY : "createBooleanArray" >
+| < CREATEINTMATRIX : "createIntMatrix" >
+| < CREATEINTERFACEMATRIX : "createInterfaceMatrix" >
+| < CREATEREALMATRIX : "createRealMatrix" >
+| < CREATEBOOLEANMATRIX : "createBooleanMatrix" >
+| < CREATEPMFARRAY : "createPmfArray" >
+| < CREATEPMFFROMREALARRAY : "createPmfFromRealArray" >
+| < CREATEPMFMATRIX : "createPmfMatrix" >
+
+| < EXP : "exp" >
+| < FLOOR : "floor" >
+| < HYPERGEOMETRIC : "hypergeometric" >
+| < ISSAMEPMFINSTANCE : "isSamePmfInstance" >
+| < LOG : "log" >
+| < MAX: "max" >
+| < MIN: "min" >
+| < MULTINOMIAL : "multinomial" >
+| < MULTIVARIATEHYPERGEOMETRIC : "multivariateHypergeometric" >
+| < RANDOMINT : "randomInt" >
+| < RANDOMREAL : "randomReal" >
+| < POW : "pow" >
+| < SQRT : "sqrt" >
+
+| < LENGTH: "length" >
+| < MIN_VALUE: "minValue" >
+| < MAX_VALUE: "maxValue" >
+
+| < NUMBER:
+    (["0"-"9"])+ ( "." (["0"-"9"])* )? ( ("E"|"e") ("-")? (["0"-"9"])+ )?
+    |
+    "." (["0"-"9"])+  ( ("E"|"e") ("-")? (["0"-"9"])+ )?
+  >
+
+| <STRING:
+    <DOUBLE_QUOTE>
+    (~["\"","\t","\n","\r"])+
+    <DOUBLE_QUOTE> >
+
+| <RV_IDENTIFIER:
+    (["A"-"Z","_"])
+    (["A"-"Z","0"-"9","_"])*
+  >
+
+| <TOKEN_IDENTIFIER:
+    <SINGLE_QUOTE>
+    <RV_IDENTIFIER>
+    <SINGLE_QUOTE>
+>
+
+| < IDENTIFIER:
+    (["a"-"z"])
+    (["A"-"Z","a"-"z","0"-"9"])*
+>
+
+| < ADD: "+" >
+| < AND: "&&" >
+| < ASSIGN: "=" >
+| < COLON: ":" >
+| < COMMA: "," >
+| < DIV: "/" >
+| < DOT: "." >
+| < DOUBLE_QUOTE: "\"" >
+| < EQ: "==" >
+| < GEQ: ">=" >
+| < GIVEN: "|" >
+| < GT: ">" >
+| < LBRACE: "{" >
+| < LBRACKET: "[" >
+| < LEQ: "<=" >
+| < LPAREN: "(" >
+| < LT: "<" >
+| < MUL: "*" >
+| < NEQ: "!=" >
+| < NOT: "!" >
+| < OR: "||" >
+| < QUESTION_MARK: "?" >
+| < RBRACE: "}" >
+| < RBRACKET: "]" >
+| < RPAREN: ")" >
+| < SAMPLE: "~" >
+| < SEMICOLON: ";" >
+| < SINGLE_QUOTE: "'" >
+| < SUB: "-" >
+}
+
+void Root() #Root :
+{}
+{
+  ( RootStatement() )*
+  <EOF>
+}
+
+void RootStatement() :
+{}
+{
+  LOOKAHEAD(2) TokenStatement()
+|
+  LOOKAHEAD(2) InterfaceStatement()
+|
+  LOOKAHEAD(2) InterfaceArrayStatement()
+|
+  LOOKAHEAD(2) InterfaceMatrixStatement()
+|
+  DeclarationStatement()
+}
+
+void Block() #Block :
+{}
+{
+  <LBRACE> ( Statement() )* <RBRACE>
+}
+
+void Statement() :
+{}
+{
+  FailStatement()
+|
+  SkipStatement()
+|
+  IfStatement()
+|
+  ForStatement()
+|
+  ReturnStatement()
+|
+  WhileStatement()
+|
+  DeclarationStatement()
+|
+  LOOKAHEAD(3) SamplingStatement()
+|
+  AssignmentStatement()
+}
+
+void SkipStatement() #SkipStatement :
+{}
+{
+  <QSKIP> <SEMICOLON>
+}
+
+void TokenStatement() #TokenStatement :
+{}
+{
+ [<PUBLIC>] <QTOKEN> <TOKEN_IDENTIFIER> <ASSIGN> <NUMBER> <SEMICOLON>
+}
+
+void FailStatement() #FailStatement :
+{}
+{
+  <FAIL>
+  <STRING>
+  <SEMICOLON>
+}
+
+void IfStatement() #IfStatement :
+{}
+{
+  <IF>
+  <LPAREN>
+  Expression()
+  <RPAREN>
+  Block()
+  [
+      <ELSE>
+      (
+          Block()
+          |
+          IfStatement()
+      )
+  ]
+}
+
+void WhileStatement() #WhileStatement :
+{}
+{
+  <WHILE> <LPAREN> Expression() <RPAREN> Block()
+}
+
+void ForStatement() #ForStatement :
+{}
+{
+  <FOR> ForParameters() Block()
+}
+
+void ForParameters() #ForParameters :
+{}
+{
+  <LPAREN> <IDENTIFIER> <ASSIGN> Expression() <TO> Expression() <RPAREN>
+}
+
+void ReturnStatement() #ReturnStatement :
+{}
+{
+  <RETURN>
+  [ LOOKAHEAD(2) PmfInitializer()  | ArrayInitializer() | ReturnExpression() ]
+  <SEMICOLON>
+}
+
+void ReturnExpression() #ReturnExpression :
+{}
+{
+  ReturnExpressionElement()
+  (
+     <COMMA>
+     ReturnExpressionElement()
+  )*
+}
+
+void ReturnExpressionElement() #ReturnExpressionElement :
+{}
+{
+  LOOKAHEAD(3)
+  (
+    <LPAREN>
+    Expression()
+    ( <COMMA> Expression() )*
+    <RPAREN>
+  )
+  |
+  Expression()
+}
+
+void InterfaceStatement() #InterfaceStatement :
+{}
+{
+  [ <PUBLIC> ]
+  <INTERFACE>
+  Type()
+  <IDENTIFIER>
+  Parameters()
+  <SEMICOLON>
+}
+
+void InterfaceArrayStatement() #InterfaceArrayStatement :
+{}
+{
+  [ <PUBLIC> ]
+  <INTERFACEARRAY>
+  Type()
+  <IDENTIFIER>
+  Parameters()
+  <SEMICOLON>
+}
+
+void InterfaceMatrixStatement() #InterfaceMatrixStatement :
+{}
+{
+  [ <PUBLIC> ]
+  <INTERFACEMATRIX>
+  Type()
+  <IDENTIFIER>
+  Parameters()
+  <SEMICOLON>
+}
+
+void AssignmentStatement() #AssignmentStatement :
+{}
+{
+  Expression()
+
+  [
+    <ASSIGN>
+    
+    (
+      ArrayInitializer()
+    |
+      LOOKAHEAD(2) PmfInitializer()
+    |
+      CreateExpression()
+    |
+      Expression()
+    )
+  ]
+  
+  <SEMICOLON>
+}
+
+void DeclarationStatement() #DeclarationStatement :
+{}
+{
+  [ <PUBLIC> ]
+  Type()
+  <IDENTIFIER>
+  
+  (
+    <SEMICOLON>
+  |
+    (
+      <ASSIGN>
+    
+      (
+        ArrayInitializer()
+      |
+        LOOKAHEAD(2) PmfInitializer()
+      |
+        CreateExpression()
+      |
+        Expression()
+      )
+     
+      <SEMICOLON>
+    )
+  |
+    FunctionDeclarationBody()
+  )
+}
+
+void SamplingStatement() #SamplingStatement :
+{}
+{
+  IdentifierList()
+  <SAMPLE>
+  Expression()
+  <SEMICOLON>
+}
+
+void FunctionDeclarationBody() #FunctionDeclarationBody :
+{}
+{
+  Parameters()
+  Block()
+}
+
+void Parameters() #Parameters :
+{}
+{
+  <LPAREN>
+  (
+    ParameterDeclaration()
+    ( <COMMA>  ParameterDeclaration() )*
+  )?
+  <RPAREN>
+}
+
+void ParameterDeclaration() #ParameterDeclaration :
+{}
+{
+    Type() <IDENTIFIER>
+}
+
+void Type() #Type :
+{}
+{
+  <INT>
+  |
+  <REAL>
+  |
+  <BOOLEAN>
+  |
+  <VOID>
+  |
+  <INTARRAY>
+  |
+  <REALARRAY>
+  |
+  <BOOLEANARRAY>
+  |
+  <INTMATRIX>
+  |
+  <REALMATRIX>
+  |
+  <BOOLEANMATRIX>
+  |
+  (
+    (
+      <PMF>
+    |
+      <PMFARRAY>
+    |
+      <PMFMATRIX>
+    )
+    [ Qualifier() ]
+  )
+}
+
+void Attribute() #Attribute :
+{}
+{
+  <MIN_VALUE>
+  |
+  <MAX_VALUE>
+  |
+  <LENGTH>
+}
+
+void Negative() #Negative :
+{}
+{
+  <SUB>
+}
+
+void Not() #Not :
+{}
+{
+  <NOT>
+}
+
+void IdentifierList() #IdentifierList :
+{}
+{
+  <IDENTIFIER>
+  
+  (
+    <COMMA>
+    <IDENTIFIER>
+  )*
+}
+
+void ExpressionList() #ExpressionList :
+{}
+{
+  Expression()
+  ( <COMMA> Expression() )*
+}
+
+void Expression() :
+{}
+{
+  OrExpression()
+}
+
+void OrExpression() #OrExpression(>1) :
+{}
+{
+  AndExpression()
+  (
+    <OR> AndExpression()
+  )*
+}
+
+void AndExpression() #AndExpression(>1) :
+{}
+{
+  NotExpression() ( <AND> NotExpression() )*
+}
+
+void NotExpression() #NotExpression(>1) :
+{}
+{
+  [ Not() ]
+  EqualityExpression()
+}
+
+void EqualityExpression() #EqualityExpression(>1) :
+{}
+{
+  RelationalExpression() [ ( <EQ> | <NEQ> ) RelationalExpression() ]
+}
+
+void RelationalExpression() #RelationalExpression(>1) :
+{}
+{
+  AdditiveExpression() [ ( <LT> | <GT> | <LEQ> | <GEQ> ) AdditiveExpression() ]
+}
+
+void AdditiveExpression () #AdditiveExpression(>1) :
+{}
+{
+  MultiplicativeExpression()
+  (
+    ( <ADD> | <SUB> ) MultiplicativeExpression()
+  )*
+}
+
+void MultiplicativeExpression() #MultiplicativeExpression(>1) :
+{}
+{
+  NegativeExpression()
+  (
+    ( <MUL> | <DIV> ) NegativeExpression()
+  )*
+}
+
+void NegativeExpression() #NegativeExpression(>1) :
+{}
+{
+  [ Negative() ]
+  AttributeExpression()
+}
+
+void AttributeExpression() #AttributeExpression(>1) :
+{}
+{
+  SuffixedExpression()
+  [ <DOT> Attribute() ]
+}
+
+void SuffixedExpression() #SuffixedExpression(>1) :
+{}
+{
+  PrimaryExpression()
+  ( Suffix() )*
+}
+
+void Suffix() :
+{}
+{
+  Lookup()
+  |
+  Call()
+  |
+  Qualifier()
+}
+
+void Lookup() #Lookup :
+{}
+{
+  <LBRACKET>
+  Expression()
+  <RBRACKET>
+}
+
+void Qualifier() #Qualifier :
+{}
+{
+  <LBRACE>
+  ( SimpleQualifier() | CompoundQualifier() )
+  <RBRACE>
+}
+
+void Call() #Call :
+{}
+{
+  <LPAREN>
+  [ ExpressionList() ]
+  <RPAREN>
+}
+
+void CompoundQualifier() #CompoundQualifier :
+{}
+{
+  <LPAREN>
+  SimpleQualifier()
+  <RPAREN>
+  (
+    <COMMA>
+    <LPAREN>
+    SimpleQualifier()
+    <RPAREN>
+  )+
+}
+
+void SimpleQualifier() #SimpleQualifier :
+{}
+{
+  (
+    <RV_IDENTIFIER>
+    |
+    <QUESTION_MARK>
+  )
+  (
+    (
+      <COMMA>
+      |
+      <GIVEN>
+    )
+    (
+      (
+        <RV_IDENTIFIER>
+        [
+          <ASSIGN>
+          MultiplicativeExpression()
+        ]
+      )
+      |
+      <QUESTION_MARK>
+    )
+  )*
+}
+
+void ArrayInitializer() #ArrayInitializer :
+{}
+{
+    <LBRACKET>
+    ( LOOKAHEAD(2) PmfInitializerList() | ExpressionList() | ArrayInitializerList() )
+    <RBRACKET>
+}
+
+void ArrayInitializerList() #ArrayInitializerList :
+{}
+{
+    ArrayInitializer()
+    ( <COMMA> ArrayInitializer() )*
+}
+
+void PmfInitializerList() #PmfInitializerList :
+{}
+{
+    PmfInitializer()
+    ( <COMMA> PmfInitializer() )*
+}
+
+void PmfInitializer() #PmfInitializer :
+{}
+{
+    LOOKAHEAD(2) <LPAREN> PmfInitializerGroup() ( <COMMA> PmfInitializerGroup() )* <RPAREN>
+    |
+    PmfInitializerGroup()
+}
+
+void PmfInitializerGroup() #PmfInitializerGroup :
+{}
+{
+  (
+    <LBRACE>
+      PmfInitializerElement()
+      ( <COMMA> PmfInitializerElement() )*
+    <RBRACE>
+  )
+}
+
+void PmfInitializerElement() #PmfInitializerElement :
+{}
+{
+    (
+      LOOKAHEAD(3) ( <LPAREN> Expression() ( <COMMA> Expression() )* <RPAREN> )
+      |
+      Expression()
+    )
+    <COLON>
+    Expression()
+}
+
+void CreateExpression() #CreateExpression :
+{}
+{
+  (
+    <CREATEINTARRAY>
+    |
+    <CREATEREALARRAY>
+    |
+    <CREATEBOOLEANARRAY>
+    |
+    <CREATEINTMATRIX>
+    |
+    <CREATEREALMATRIX>
+    |
+    <CREATEBOOLEANMATRIX>
+    |
+    <CREATEPMFARRAY>
+    |
+    <CREATEPMFMATRIX>
+    |
+    <CREATEINTERFACEARRAY>
+    |
+    <CREATEINTERFACEMATRIX>
+  )
+  <LPAREN>
+  ExpressionList()
+  <RPAREN>
+}
+
+void PrimaryExpression() #PrimaryExpression :
+{}
+{
+  ( <LPAREN> Expression() <RPAREN> )
+  |
+  <IDENTIFIER>
+  |
+  <NUMBER>
+  |
+  <TOKEN_IDENTIFIER>
+  |
+  <TRUE>
+  |
+  <FALSE>
+  |
+  <BERNOULLI>
+  |
+  <BINOMIAL>
+  |
+  <BRANCHPROBABILITY>
+  |
+  <CEILING>
+  |
+  <COMPUTELEFTTAIL>
+  |
+  <COMPUTERIGHTTAIL>
+  |
+  <CREATEPMFFROMREALARRAY>
+  |
+  <EXP>
+  |
+  <FLOOR>
+  |
+  <HYPERGEOMETRIC>
+  |
+  <ISSAMEPMFINSTANCE>
+  | 
+  <LOG>
+  |
+  <MAX>
+  |
+  <MIN>
+  |
+  <MULTINOMIAL>
+  |
+  <MULTIVARIATEHYPERGEOMETRIC>
+  |
+  <RANDOMINT>
+  |
+  <RANDOMREAL>
+  |
+  <POW>
+  |
+  <SQRT>
+}
+
+
