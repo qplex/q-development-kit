@@ -14,20 +14,14 @@ except:
     print('Unable to run Java')
     sys.exit(1)
 
-output_a = java_result.stdout.decode()
-output_b = java_result.stderr.decode()
-
-if 'Usage' in output_a:
-    output_a = output_a.replace('java -jar QCompiler.jar', 'python3 qcompile.py')
-
-if 'Usage' in output_b:
-    output_b = output_b.replace('java -jar QCompiler.jar', 'python3 qcompile.py')
-
-print(output_a)
-print(output_b)
-
 if java_result.returncode != 0:
+    stderr = java_result.stderr.decode()
+    stderr = stderr.replace('java -jar QCompiler.jar', 'python3 qcompile.py')
+    print(stderr, end='')
     sys.exit(java_result.returncode)
+else: 
+    stdout = java_result.stdout.decode()
+    print(stdout.replace('File', 'C++ source'), end='')
 
 module_name = sys.argv[1]
 if module_name == '-log':
@@ -42,5 +36,14 @@ build_extension = build_ext.build_ext(dist)
 build_extension.finalize_options()
 build_extension.extensions = ext_modules
 build_extension.build_lib = os.getcwd()
-build_extension.run()
 
+# direct C++ compiler's stderr to null and run it
+null_fd =  os.open(os.devnull, os.O_RDWR)
+saved_fd = os.dup(2)
+os.dup2(null_fd, 2)
+build_extension.run() 
+os.dup2(saved_fd, 2)
+os.close(null_fd)
+os.close(saved_fd)
+
+print('Extension module', module_name, 'successfully compiled.')
