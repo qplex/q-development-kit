@@ -16,14 +16,15 @@
 	<target name="docs" depends="init">
 		<mkdir dir="build/docs"/>
 
-		<copy file="docs/guide.md" tofile="build/docs/guide.md"/>
+		<copy file="docs/conf.py" tofile="build/docs/conf.py"/>
+		<copy file="docs/guide.rst" tofile="build/docs/guide.rst"/>
 		<copy file="docs/release-notes.txt" tofile="build/docs/release-notes.txt"/>
 
 		<java classname="ReplaceInTextFile">
 			<classpath>
 				<pathelement location="build/tools"/>
 			</classpath>
-			<arg value="build/docs/guide.md"/>
+			<arg value="build/docs/conf.py"/>
 			<arg value="@VERSION@"/>
 			<arg value="${version}"/>
 		</java>
@@ -38,10 +39,11 @@
 			<arg value="${version}"/>
 		</java>
 
-		<exec executable="pandoc">
-			<arg line="build/docs/guide.md"/>
-			<arg line="-o"/>
-			<arg line="build/docs/guide.pdf"/>
+		<exec executable="sphinx-build">
+			<arg line="-M"/>
+			<arg line="latexpdf"/>
+			<arg line="build/docs"/>
+			<arg line="build/docs/_build"/>
 		</exec>
 	</target>
 
@@ -114,7 +116,7 @@
 			</fileset>
 		</copy>
 
-		<copy file="build/docs/guide.pdf" tofile="build/qdk/Q Developer Guide ${version}.pdf"/>
+		<copy file="build/docs/_build/latex/qdeveloperguide.pdf" tofile="build/qdk/Q Developer Guide ${version}.pdf"/>
 		<copy file="build/docs/release-notes.txt" tofile="build/qdk/Release notes ${version}.txt"/>
 		<copy file="build/compiler/QCompiler.jar" tofile="build/qdk/QCompiler.jar"/>
 	
