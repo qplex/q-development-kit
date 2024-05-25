@@ -45,4 +45,4 @@ Building a C++ extension module from Q source using the QDK requires Java (JRE 1
 a C++ compiler, Python 3, and the Python package setuptools.
 
 Building the QDK itself from source additionally requires Java (JDK 1.8 or later),
-Ant, a TeX distribution (e.g., TeX Live, MiKTeX, or MacTeX), and the Python package sphinx.
+Ant, a TeX distribution (e.g., TeX Live, MiKTeX, or MacTeX), and Pandoc.
