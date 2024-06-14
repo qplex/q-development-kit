@@ -794,7 +794,7 @@ BooleanMatrix *initializeBooleanMatrix(QObject *obj, int rowCount, ...) {
         int length = va_arg(valist, Int);
         BooleanArray *a = createBooleanArray(obj, length);
         for (int j = 0; j < length; j++)
-            a->elements[j] = va_arg(valist, Boolean);
+            a->elements[j] = va_arg(valist, int);
         m->elements[i] = a;
     }
     va_end(valist);
