@@ -1,13 +1,9 @@
-// import parser.QParser;
-
 import java.io.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 
 import compiler.Engine;
 import generator.Generator;
-import parser.Node;
-import parser.QParser;
 
 /**
  * Application entry point
@@ -58,7 +54,7 @@ public class QCompiler {
 					System.exit(1);
 				}
 				if (!(new File(name).exists() && new File(name).isFile())) {
-					System.out.println("File not found: " + name);
+					System.err.println("File not found: " + name);
 					System.exit(1);
 				}
 			}
