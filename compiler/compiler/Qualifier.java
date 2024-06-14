@@ -80,14 +80,6 @@ public class Qualifier implements parser.QParserConstants, parser.QParserTreeCon
 		return token.kind == ASSIGN;
 	}
 
-	private static boolean isLParen(Token token) {
-		return token.kind == LPAREN;
-	}
-
-	private static boolean isRParen(Token token) {
-		return token.kind == RPAREN;
-	}
-
 	// Traverses a sublist of children and constructs an array list of names.
 	private static ArrayList<String> getNames(QNode node, int startIndex, int endIndex) {
 		ArrayList<String> a = new ArrayList<String>();
