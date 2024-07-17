@@ -19,7 +19,7 @@ public class AttributeExpressionNode extends QNode implements QParserTreeConstan
 		case MIN_VALUE:
 		case MAX_VALUE:
 			if (!sourceType.isAssignableFrom(QType.SIMPLE_PMF))
-				throw new CompileException("Expected Pmf<?>", this);
+				throw new CompileException("Expected Pmf{?}", this);
 			_type = QType.INT;
 			return;
 		case LENGTH:
