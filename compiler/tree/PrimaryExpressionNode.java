@@ -84,6 +84,7 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 			_type = builtinFunctionType(QType.REAL, QType.REAL, QType.REAL);
 			break;
 		case RANDOMINT:
+		case FACTORIAL:
 			_type = builtinFunctionType(QType.INT, QType.INT);
 			break;
 		case ISSAMEPMFINSTANCE:

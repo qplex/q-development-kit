@@ -83,6 +83,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			case RANDOMREAL:
 			case CREATEPMFFROMREALARRAY:
 			case EXP:
+			case FACTORIAL:
 			case HYPERGEOMETRIC:
 			case MULTIVARIATEHYPERGEOMETRIC:
 			case COMPUTELEFTTAIL:
@@ -376,6 +377,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					case ISSAMEPMFINSTANCE:
 					case MIN:
 					case MAX:
+					case FACTORIAL:
 					case FLOOR:
 					case CEILING:
 					case EXP:

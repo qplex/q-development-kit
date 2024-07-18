@@ -109,6 +109,7 @@ TOKEN :
 | < CREATEPMFMATRIX : "createPmfMatrix" >
 
 | < EXP : "exp" >
+| < FACTORIAL : "factorial" >
 | < FLOOR : "floor" >
 | < HYPERGEOMETRIC : "hypergeometric" >
 | < ISSAMEPMFINSTANCE : "isSamePmfInstance" >
@@ -781,6 +782,8 @@ void PrimaryExpression() #PrimaryExpression :
   <CREATEPMFFROMREALARRAY>
   |
   <EXP>
+  |
+  <FACTORIAL>
   |
   <FLOOR>
   |

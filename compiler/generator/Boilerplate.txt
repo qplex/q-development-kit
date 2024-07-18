@@ -1359,6 +1359,17 @@ Pmf *createPmfFromRealArray(QObject *obj, RealArray *realArray) {
     return a.toPmf();
 }
 
+Int factorial(Int n) {
+    if (n<0)
+        abort("factorial requires a nonnegative integer");
+    
+    if (n==0 || n==1) {
+        return 1;
+    } else {
+        return n * factorial(n-1);
+    }
+}
+
 Int computeLeftTail(Pmf *pmf, Real epsilon) {
     if (pmf->pmfType != SIMPLE)
         abort("computeLeftTail requires simple pmf");
