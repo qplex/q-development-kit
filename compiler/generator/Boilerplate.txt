@@ -1359,16 +1359,16 @@ Pmf *createPmfFromRealArray(QObject *obj, RealArray *realArray) {
     return a.toPmf();
 }
 
-Int factorial(Int n) {
-    if (n<0)
-        abort("factorial requires a nonnegative integer");
-    
-    if (n==0 || n==1) {
-        return 1;
-    } else {
-        return n * factorial(n-1);
+Pmf *createBivariatePmfFromRealMatrix(QObject *obj, RealMatrix *realMatrix) {
+    JointAccumulator accumulator(obj, 2);
+    for (int i=0; i<realMatrix->length; i++) {
+        RealArray *row = realMatrix->elements[i];
+        for (int j=0; j<row->length; j++)
+            accumulator.putDouble(row->elements[j],i,j);
     }
+    return accumulator.toPmf();
 }
+
 
 Int computeLeftTail(Pmf *pmf, Real epsilon) {
     if (pmf->pmfType != SIMPLE)

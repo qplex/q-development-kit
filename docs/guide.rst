@@ -316,7 +316,7 @@ specify the return type of a function that does not return a value.
 ``token`` is a type whose value is an integer constant.
 
 ``interface`` is a type whose value is a function. For more on
-interfaces, see Section 4.8.8.
+interfaces, see Section 4.8.9.
 
 Q also supports the following object types: ``IntArray``, ``RealArray``,
 ``BooleanArray``, ``IntMatrix``, ``RealMatrix``, ``BooleanMatrix``,
@@ -686,8 +686,6 @@ Arithmetic functions
 +-----------------------------+------------------------------------------+
 | ``int max(int a, int b)``   | The greater of integers ``a`` and ``b``  |
 +-----------------------------+------------------------------------------+
-| ``int factorial(int n)``    | The factorial of ``n``                   |
-+-----------------------------+------------------------------------------+
 | ``int floor(real x)``       | The greatest integer less than or equal  |
 |                             | to ``x``                                 |
 +-----------------------------+------------------------------------------+
@@ -712,7 +710,7 @@ Arithmetic functions
 Create functions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-These functions create new instances of arrays and matrices, filled with
+The following functions create new instances of arrays and matrices, filled with
 the default value of their respective element types (See Section 4.4.3.)
 
 ::
@@ -750,6 +748,32 @@ appear only on the right-hand-side of an assignment statement. Example:
 After executing this statement, The variable ``pmfArray`` will contain
 an array of 42 elements of type ``Pmf{A,B}``, each of value
 ``{(0,0):1.0}``.
+
+The following functions create a pmf given a RealArray or a RealMatrix:
+
+``Pmf createPmfFromRealArray(RealArray a)``
+
+Returns a pmf with probabilities listed in ``a``. That is:
+
+-  ``a[0]`` will be the probability of 0,
+-  ``a[1]`` will be the probability of 1,
+
+and so on. 
+If an element is zero or negative, it is ignored. 
+If an element is greater than one, it is replaced by one.
+Elements are normalized so they sum to one.
+
+``Pmf createBivariatePmfFromRealMatrix(RealMatrix m)``
+
+Returns a joint pmf with probabilities listed in ``m``. That is:
+
+-  ``m[0][0]`` will be the probability of (0,0),
+-  ``m[0][1]`` will be the probability of (0,1),
+
+and so on. 
+If an element is zero or negative, it is ignored. 
+If an element is greater than one, it is replaced by one.
+Elements are normalized so they sum to one.
 
 Pmf statistical functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -799,14 +823,8 @@ Returns a multivariate hypergeometric pmf with parameters:
 -  The length of array ``b`` must equal ``d``
 -  The sum of elements in ``b`` must equal ``N``.
 
-``Pmf createPmfFromRealArray(RealArray a)``
-
-Returns a pmf with probabilities listed in ``a``. That is:
-
--  ``a[0]`` will be the probability of 0,
--  ``a[1]`` will be the probability of 1,
-
-and so on.
+Pmf address comparison
+^^^^^^^^^^^^^^^^^^^^^
 
 ``boolean isSamePmfInstance(Pmf a, Pmf b)``
 
@@ -866,8 +884,8 @@ implementation. Example:
 
 Interfaces (like functions) must be global.
 
-In order to specify the implementation of an interface, simply assign a
-function of compatible signature to it:
+In order to specify the implementation of an interface, assign 
+(within a function) a function of compatible signature to it:
 
 ::
 
@@ -882,12 +900,12 @@ An interface is called the same way a function is called:
 If the interface has not been assigned an implementation, the call
 generates a runtime error.
 
-An interfaceArray declaration takes the same form as an interface
+An InterfaceArray declaration takes the same form as an interface
 declaration:
 
 ::
 
-       interfaceArray int ha(Pmf p);
+       InterfaceArray int ha(Pmf p);
 
 You can then use an initializer to assign it a value:
 
@@ -896,9 +914,17 @@ You can then use an initializer to assign it a value:
        ha = [f,f,f];
 
 If the size of the array is not known at compile time, you can use
-createInterfaceArray to create an instance.
+createInterfaceArray to create an instance:
 
-The declaration of an interfaceMatrix follows the same format.
+::
+
+       ha = createInterfaceArray(n);
+       for (i = 0 to n-1) {
+           ha[i] = f;
+       }
+       
+
+The declaration and assignment of an InterfaceMatrix follows a similar format.
 
 Additional rules
 ~~~~~~~~~~~~~~~~~~~~
@@ -1105,6 +1131,9 @@ Then values can be assigned from Python according to:
 
        engine.p = {1:0.1, 2:0.2, 3:0.3, 4:0.4}
        engine.q = {(1,7):0.1, (2,3):0.2, (3,9):0.3, (4,7):0.4}
+
+Such pmf assignments are subject to the same conventions as pmf initializers in Q source (Section 4.4.2),
+but in Python duplicate entries in a dictionary overwrite earlier values.
 
 Be aware that converting objects between Q and Python representations
 can be time-consuming. For example, a joint pmf is implemented in Q as a

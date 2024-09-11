@@ -273,6 +273,11 @@ public Pmf{?,?,?,?} fC22() {
     return multinomial(2, 4, globalSimplePmf);
 }
 
+public Pmf{?,?} fC23() {
+    RealMatrix m = [[.05,.1,.15,.2], [.25,.25]];
+    return createBivariatePmfFromRealMatrix(m);
+}
+
 // SECTION D - Sampling
 
 public Pmf p;

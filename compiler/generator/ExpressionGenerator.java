@@ -82,8 +82,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			case RANDOMINT:
 			case RANDOMREAL:
 			case CREATEPMFFROMREALARRAY:
+			case CREATEBIVARIATEPMFFROMREALMATRIX:
 			case EXP:
-			case FACTORIAL:
 			case HYPERGEOMETRIC:
 			case MULTIVARIATEHYPERGEOMETRIC:
 			case COMPUTELEFTTAIL:
@@ -369,6 +369,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					case HYPERGEOMETRIC:
 					case MULTIVARIATEHYPERGEOMETRIC:
 					case CREATEPMFFROMREALARRAY:
+					case CREATEBIVARIATEPMFFROMREALMATRIX:
 						pw.print("(QObject *) self");
 						needsComma = true;
 						break;
@@ -377,7 +378,6 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					case ISSAMEPMFINSTANCE:
 					case MIN:
 					case MAX:
-					case FACTORIAL:
 					case FLOOR:
 					case CEILING:
 					case EXP:

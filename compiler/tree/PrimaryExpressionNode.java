@@ -75,6 +75,9 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 		case CREATEPMFFROMREALARRAY:
 			_type = builtinFunctionType(QType.SIMPLE_PMF, QType.REALARRAY);
 			break;
+		case CREATEBIVARIATEPMFFROMREALMATRIX:
+			_type = builtinFunctionType(new QType(PMF, new Qualifier(2)), QType.REALMATRIX);
+			break;
 		case EXP:
 		case LOG:
 		case SQRT:
@@ -84,7 +87,6 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 			_type = builtinFunctionType(QType.REAL, QType.REAL, QType.REAL);
 			break;
 		case RANDOMINT:
-		case FACTORIAL:
 			_type = builtinFunctionType(QType.INT, QType.INT);
 			break;
 		case ISSAMEPMFINSTANCE:

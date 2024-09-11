@@ -106,10 +106,10 @@ TOKEN :
 | < CREATEBOOLEANMATRIX : "createBooleanMatrix" >
 | < CREATEPMFARRAY : "createPmfArray" >
 | < CREATEPMFFROMREALARRAY : "createPmfFromRealArray" >
+| < CREATEBIVARIATEPMFFROMREALMATRIX : "createBivariatePmfFromRealMatrix" >
 | < CREATEPMFMATRIX : "createPmfMatrix" >
 
 | < EXP : "exp" >
-| < FACTORIAL : "factorial" >
 | < FLOOR : "floor" >
 | < HYPERGEOMETRIC : "hypergeometric" >
 | < ISSAMEPMFINSTANCE : "isSamePmfInstance" >
@@ -781,9 +781,9 @@ void PrimaryExpression() #PrimaryExpression :
   |
   <CREATEPMFFROMREALARRAY>
   |
-  <EXP>
+  <CREATEBIVARIATEPMFFROMREALMATRIX>
   |
-  <FACTORIAL>
+  <EXP>
   |
   <FLOOR>
   |
