@@ -455,6 +455,16 @@ BooleanArray *Log(const char *headerA, Int index, const char *headerB, BooleanAr
     return a;
 }
 
+
+PmfArray *Log(const char *headerA, Int index, const char *headerB, PmfArray *a) {
+    initLog();
+    *logFile << headerA << index << headerB;
+    Log(a);
+    *logFile << std::endl;
+    logFile->flush();
+    return a;
+}
+
 void Log(const char *header, Int val, Real prob) {
     initLog();
     *logFile << header << val << ":" << prob << std::endl;
