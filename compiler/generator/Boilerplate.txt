@@ -1444,22 +1444,21 @@ Pmf *multinomialLayer(QObject *obj, int n, int k, Real *gamma) {
     
     Pmf *marginal = binomial(obj, n, gamma[0]);
     Pmf *joint = allocateJointPmf(obj, marginal, k);
-    for (int i=0; i<=n; i++)
-        joint->joint.elements[i] = multinomialLayer(obj, n-i, k-1, gamma+1);
+    for (int i=0; i<marginal->simple.length; i++)
+        joint->joint.elements[i] = multinomialLayer(obj, n-i-marginal->simple.offset, k-1, gamma+1);
     return joint;
 }
 
 Pmf *multinomial(QObject *obj, int n, int k, Pmf *p) {
-    if (p->pmfType != SIMPLE || p->simple.offset || p->simple.length != k)
+    if (p->pmfType != SIMPLE || p->simple.offset+p->simple.length > k)
         abort("Invalid multinomial parameters");
-    Real *gamma = (Real *) malloc(sizeof(Real) * k);
+    Real *gamma = (Real *) calloc(k, sizeof(Real));
     Real r = 1;
-    for (int i=0; i<k-1; i++) {
+    for (int i=0; i<p->simple.length; i++) {
         Real q = p->simple.elements[i];
-        gamma[i] = q/r;
+        gamma[i+p->simple.offset] = q/r;
         r -= q;
     }
-    gamma[k-1] = 1;
 
     Pmf *pmf = multinomialLayer(obj, n, k, gamma);
     free(gamma);

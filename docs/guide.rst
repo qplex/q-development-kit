@@ -799,7 +799,7 @@ Returns a multinomial pmf with parameters:
 -  ``k`` must be an integer literal.
 -  The number of question marks in the returned pmf configuration must
    equal ``k``.
--  The support of ``p`` is restricted to of 0,1,…,\ ``k``-1.
+-  The pmf ``p`` can assign non-zero probabilities only to the integers 0,1,…,\ ``k``-1.
 
 ``Pmf hypergeometric(int bigN, int bigK, int n)``
 
