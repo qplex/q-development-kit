@@ -100,7 +100,7 @@
 		<javac source="1.8" target="1.8" srcdir="build/compiler" destdir="build/compiler"/>
 
 		<jar destfile="build/compiler/QCompiler.jar">
-			<fileset dir="build/compiler" excludes="*.java"/>
+			<fileset dir="build/compiler" excludes="**/*.java"/>
 			<manifest>
 				<attribute name="Main-Class" value="QCompiler"/>
 			</manifest>
