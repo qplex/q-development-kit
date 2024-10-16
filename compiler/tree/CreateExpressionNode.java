@@ -13,6 +13,24 @@ public class CreateExpressionNode extends QNode implements QParserTreeConstants 
 	void initialize() {
 		switch (firstToken.kind) {
 		case CREATEINTARRAY:
+		case CREATEREALARRAY:
+		case CREATEBOOLEANARRAY:
+		case CREATEPMFARRAY:
+		case CREATEINTERFACEARRAY:
+			checkParameters(1);
+			break;
+
+		case CREATEINTMATRIX:
+		case CREATEREALMATRIX:
+		case CREATEBOOLEANMATRIX:
+		case CREATEPMFMATRIX:
+		case CREATEINTERFACEMATRIX:
+			checkParameters(2);
+			break;
+		}
+	
+		switch (firstToken.kind) {
+		case CREATEINTARRAY:
 			_type = QType.INTARRAY;
 			break;
 		case CREATEREALARRAY:
@@ -45,5 +63,15 @@ public class CreateExpressionNode extends QNode implements QParserTreeConstants 
 			break;
 		}
 
+	}
+
+	void checkParameters(int requiredNumberOfInts) {
+		QNode expressionList = getChild(0);
+		if (expressionList.jjtGetNumChildren() != requiredNumberOfInts)
+			throw new CompileException("Expected " + requiredNumberOfInts + " arguments", expressionList);
+	
+		for (int i = 0; i < expressionList.jjtGetNumChildren(); i++)
+			if (expressionList.getChild(i)._type != QType.INT)
+				throw new CompileException("Expected an int", expressionList.getChild(i));
 	}
 }
