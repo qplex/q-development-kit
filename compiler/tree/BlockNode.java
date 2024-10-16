@@ -50,5 +50,8 @@ public class BlockNode extends QNode implements QParserTreeConstants {
 					_returnValueNodes.addAll(getChild(i)._returnValueNodes);
 			}
 		}
+
+		if (_samplingDepth > 0 && !_isTerminal) 
+			throw new CompileException("Block containing sampling statement must be left through a return or skip statement", this);		
 	}
 }
