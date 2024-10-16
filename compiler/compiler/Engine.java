@@ -42,7 +42,6 @@ public class Engine {
 			System.err.println(x.getMessage());
 			System.exit(1);
 		} catch (ParseException x) {
-			abort("Syntax error", x.currentToken);
 			Token lastSuccessfulToken = x.currentToken;
 			if (lastSuccessfulToken.next != null) {
 				abort("Syntax error", lastSuccessfulToken.next);
