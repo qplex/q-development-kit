@@ -15,6 +15,7 @@ public class ForParametersNode extends QNode implements QParserTreeConstants {
 		Signature signature = new Signature();
 		signature._parameterTypes.add(QType.INT);
 		signature._parameterNames.add(getToken(1).image);
+		signature._parameterNameTokens.add(getToken(1));
 		
 		for (int i=0; i<2; i++)
 			if (getChild(i)._type != QType.INT)
