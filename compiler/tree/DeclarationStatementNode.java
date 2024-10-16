@@ -53,6 +53,9 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 					throw new CompileException("Non-void function must return a value on all branches",
 							block.jjtGetFirstToken());
 
+			if (symbol._signature._returnType._kind == PMF && symbol._signature._returnType._qualifier._category == Qualifier.Category.CONDITIONAL) 
+				throw new CompileException("Functions may not return conditional Pmfs", getChild(0));
+			
 			if (!isSamplingFunction) {
 				if (symbol._signature._returnType._kind == VOID) {
 					// All return statements must not return a value
@@ -120,6 +123,9 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 		}
 
 		symbol._type = QType.getType((TypeNode) getNode(k));
+
+		if (symbol._type._kind == PMF && symbol._type._qualifier._category == Qualifier.Category.CONDITIONAL) 
+			throw new CompileException("Declaration statements cannot create conditional Pmfs", getChild(0).getChild(0));
 
 		if (getToken(k + 2).kind == SEMICOLON)
 			return;
