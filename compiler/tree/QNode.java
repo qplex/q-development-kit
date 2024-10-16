@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 import compiler.*;
+import compiler.CompileException;
 import parser.*;
 
 /** Base class for node classes in package <code>tree</code>. */
@@ -24,6 +25,7 @@ public abstract class QNode extends SimpleNode implements QParserTreeConstants, 
 	
 	public int _samplingCount;
 	public int _samplingDepth;
+	public boolean _hasSkipBeforeSampling;
 	public boolean _isTerminal;
 	ArrayList<QNode> _returnValueNodes;
 	

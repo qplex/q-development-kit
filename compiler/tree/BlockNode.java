@@ -43,6 +43,10 @@ public class BlockNode extends QNode implements QParserTreeConstants {
 			_samplingDepth = Math.max(_samplingDepth, _samplingCount);
 			_isTerminal = getChild(i)._isTerminal;
 
+			if (!_hasSkipBeforeSampling)
+				if (_samplingCount==0 && getChild(i)._hasSkipBeforeSampling) 
+					_hasSkipBeforeSampling = true;
+
 			if (getChild(i)._returnValueNodes != null) {
 				if (_returnValueNodes == null)
 					_returnValueNodes = getChild(i)._returnValueNodes;

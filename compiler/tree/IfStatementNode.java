@@ -17,9 +17,11 @@ public class IfStatementNode extends QNode implements QParserTreeConstants {
 
 		_samplingDepth = getChild(1)._samplingDepth;
 		_returnValueNodes = getChild(1)._returnValueNodes;
-		
+		_hasSkipBeforeSampling = getChild(1)._hasSkipBeforeSampling;
+
 		if (jjtGetNumChildren() > 2) {
 			_samplingDepth = Math.max(_samplingDepth, getChild(2)._samplingDepth);
+			_hasSkipBeforeSampling |= getChild(2)._hasSkipBeforeSampling;
 			_isTerminal = getChild(1)._isTerminal && getChild(2)._isTerminal;
 			if (_returnValueNodes == null)
 				_returnValueNodes = getChild(2)._returnValueNodes;

@@ -5,6 +5,7 @@ package tree;
 import java.util.ArrayList;
 
 import parser.*;
+import compiler.*;
 
 public class SkipStatementNode extends QNode implements QParserTreeConstants {
 	public SkipStatementNode() {
@@ -12,6 +13,7 @@ public class SkipStatementNode extends QNode implements QParserTreeConstants {
 	}
 
 	void initialize() {
+		_hasSkipBeforeSampling = true;
 		_isTerminal = true;
 	}
 }

@@ -45,6 +45,14 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 					throw new CompileException("Constructor may not return a value", this);
 			}
 			
+			if (!isSamplingFunction && block._hasSkipBeforeSampling) {
+				throw new CompileException("Skip statements can only appear in sampling functions", block.jjtGetFirstToken());
+			}
+
+			if (block._hasSkipBeforeSampling) {
+				throw new CompileException("Skip statements cannot appear before sampling statements in function body", block.jjtGetFirstToken());
+			}
+
 			if (isSamplingFunction && symbol._signature._returnType._kind != PMF)
 				throw new CompileException("Sampling function must return Pmf", getChild(0));
 
