@@ -43,6 +43,12 @@ public class Engine {
 			System.exit(1);
 		} catch (ParseException x) {
 			abort("Syntax error", x.currentToken);
+			Token lastSuccessfulToken = x.currentToken;
+			if (lastSuccessfulToken.next != null) {
+				abort("Syntax error", lastSuccessfulToken.next);
+			} else {
+				abort("Syntax error at end of input", lastSuccessfulToken);				
+			}
 		} catch (CompileException x) {
 			// x.printStackTrace();
 			abort(x._message, x._token);
