@@ -154,7 +154,7 @@ class QModule:
         self._compile_cpp()
 
         print('Extension module', self.module_name, 'with class(es)', 
-              ', '.join([os.path.splitext(q_filename)[0] for q_filename in q_filenames]),
+              ', '.join([os.path.splitext(q_filename)[0] for q_filename in self.q_filenames]),
               'successfully compiled for Python', 
               str(sys.version_info.major) + '.' + str(sys.version_info.minor) + '.')
 
