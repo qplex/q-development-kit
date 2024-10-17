@@ -82,26 +82,26 @@ public class QCompiler {
 		}
 	}
 
-	// A valid module name contains lower case letters, digits and underscores, and
-	// starts with a letter.
+	// A valid module name contains lower-case letters, digits and underscores, and
+	// starts with a letter or an underscore.
 	private static boolean isValidModulename(String name) {
 		char c = name.charAt(0);
-		if (!Character.isLowerCase(c))
+		if (Character.isDigit(c))
 			return false;
-		for (int i = 1; i < name.length(); i++) {
+		for (int i = 0; i < name.length(); i++) {
 			c = name.charAt(i);
 			if (Character.isLowerCase(c))
 				continue;
-			if (Character.isDigit(c))
-				continue;
 			if (c == '_')
+				continue;
+			if (Character.isDigit(c))
 				continue;
 			return false;
 		}
 		return true;
 	}
 
-	// A valid source file name contains letters, digits and underscores, and
+	// A valid source file name contains letters and digits, and
 	// starts with an upper-case letter.
 	private static boolean isValidSourceFilename(String name) {
 		if (!name.endsWith(".q"))
@@ -118,8 +118,6 @@ public class QCompiler {
 				continue;
 			if (Character.isDigit(c))
 				continue;
-			if (c == '_')
-				continue;
 			return false;
 		}
 		return true;
@@ -127,8 +125,8 @@ public class QCompiler {
 
 	private static void abortUsage() {
 		// Logging remains as an undocumented feature.
-		// System.err.println("Usage: java -jar QCompiler.jar [-log] module-name source-file-name ...");
-		System.err.println("Usage: java -jar QCompiler.jar module-name source-file-name ...");
+		// System.err.println("Usage: java -jar QCompiler.jar [-log] module_name SourceFilename.q ...");
+		System.err.println("Usage: java -jar QCompiler.jar module_name SourceFilename.q ...");
 		System.exit(1);
 	}
 

@@ -1049,6 +1049,9 @@ the Q compiler.
 Engine names must be CamelCase. Module names must be lower case, with
 underscores allowed. These rules are consistent with Python
 recommendations, but for Q, they are mandatory.
+Engine names must be UpperCamelCase, with digits allowed except for the first character. 
+Module names must be lower case, with underscores and digits allowed except that the first character cannot be a digit.
+These rules are consistent with Python recommendations, but for Q, they are mandatory.
 
 In the discussion that follows, we will use ``qdemo`` as the module
 name, and ``Engine`` as the engine name.
