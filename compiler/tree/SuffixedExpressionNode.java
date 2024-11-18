@@ -74,9 +74,15 @@ public class SuffixedExpressionNode extends QNode implements QParserTreeConstant
 				break;
 
 			case JJTQUALIFIER:
-				_type = _type.castTo(new Qualifier((QualifierNode) child));
-				if (_type == null)
-					throw new CompileException("Invalid Pmf extraction", child);
+				switch (_type._kind) {
+				case PMF:
+					_type = _type.castTo(new Qualifier((QualifierNode) child));
+					if (_type == null)
+						throw new CompileException("Invalid Pmf extraction", child);
+					break;
+				default:
+					throw new CompileException("Extraction is only supported for a Pmf", child);
+				}
 				break;
 
 			case JJTCALL: {

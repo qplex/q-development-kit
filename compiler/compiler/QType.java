@@ -359,9 +359,6 @@ public class QType {
 	 * @return The new QType, if cast is permissible. Null otherwise.
 	 */
 	public QType castTo(Qualifier qualifier) {
-		if (_kind != QParserConstants.PMF)
-			assert (false);
-
 		if (_qualifier == null)
 			return new QType(QParserConstants.PMF, qualifier);
 
