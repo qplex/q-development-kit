@@ -47,37 +47,37 @@ engine.global_simple_pmf_matrix = [
 ]
 print(engine.global_simple_pmf_matrix)
 
-engine.global_joint_pmf = {(1,11):0.1, (2,22):0.2, (3,22):0.3, (4,44):0.4}
+engine.global_joint_pmf = {(0,0,0):0.25, (0,0,1):0.125, (0,1,0):0.125, (1,0,0):0.25, (1,1,0):0.125, (1,1,1):0.125}
 print(engine.global_joint_pmf)
 
 engine.global_joint_pmf_array = [
-    	{(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4},
-    	{(0,0):0.4, (1,1):0.3, (2,1):0.2, (2,2):0.1}
+    	{(0,0,0):0.1, (1,1,1):0.2, (2,1,2):0.3, (2,2,3):0.4},
+    	{(0,0,0):0.4, (1,1,1):0.3, (2,1,2):0.2, (2,2,3):0.1}
     ]
 print(engine.global_joint_pmf_array)
 
 engine.global_joint_pmf_matrix = [
     [
-      {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4},
-      {(0,0):0.4, (1,1):0.3, (2,1):0.2, (2,2):0.1}
+      {(0,0,0):0.1, (1,1,1):0.2, (2,1,2):0.3, (2,2,3):0.4},
+      {(0,0,0):0.4, (1,1,1):0.3, (2,1,2):0.2, (2,2,3):0.1}
     ], [
-      {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4}
+      {(0,0,0):0.1, (1,1,1):0.2, (2,1,2):0.3, (2,2,3):0.4}
     ]
 ]  
 print(engine.global_joint_pmf_matrix)
 
 engine.global_compound_pmf = (
-    {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4}, 
+    {(0,0,0):0.1, (1,1,2):0.2, (2,1,3):0.3, (2,2,4):0.4}, 
     {1:0.1, 2:0.2, 3:0.3, 4:0.4}
   )
 print(engine.global_compound_pmf)
 
 engine.global_compound_pmf_array = [
     (
-      {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4}, 
+      {(0,0,0):0.1, (1,1,2):0.2, (2,1,3):0.3, (2,2,4):0.4}, 
       {1:0.1, 2:0.2, 3:0.3, 4:0.4}
     ), (
-      {(0,0):0.4, (1,1):0.3, (2,1):0.2, (2,2):0.1}, 
+      {(0,0,0):0.4, (1,1,2):0.3, (2,1,3):0.2, (2,2,4):0.1}, 
       {1:0.4, 2:0.3, 3:0.2, 4:0.1}
     )
   ]
@@ -86,15 +86,15 @@ print(engine.global_compound_pmf_array)
 engine.global_compound_pmf_matrix = [
      [
         (
-          {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4}, 
+          {(0,0,0):0.1, (1,1,2):0.2, (2,1,3):0.3, (2,2,4):0.4}, 
           {1:0.1, 2:0.2, 3:0.3, 4:0.4}
 	), (
-	  {(0,0):0.4, (1,1):0.3, (2,1):0.2, (2,2):0.1}, 
+	  {(0,0,0):0.4, (1,1,2):0.3, (2,1,3):0.2, (2,2,4):0.1}, 
 	  {1:0.4, 2:0.3, 3:0.2, 4:0.1}
 	)
     ], [
 	(
-	  {(0,0):0.1, (1,1):0.2, (2,1):0.3, (2,2):0.4}, 
+	  {(0,0,0):0.1, (1,1,2):0.2, (2,1,3):0.3, (2,2,4):0.4}, 
 	  {1:0.1, 2:0.2, 3:0.3, 4:0.4}
 	)
      ]
@@ -111,7 +111,7 @@ engine.global_interface_matrix = [['f_z1','f_z2'],['f_z1']]
 print(engine.global_interface_matrix)
 
 print()
-print("Section B - Initializers");
+print("SECTION B - Initializers");
 print()
 
 print(engine.f_b1())
@@ -213,7 +213,41 @@ print(engine.f_g3())
 print()
 
 print()
-print("SECTION H - RUNTIME ERRORS")
+print("SECTION H - PMF EXTRACTION")
+print()
+
+engine.global_joint_pmf = {(0, 0, 0): 0.25, (0, 0, 1): 0.125, (0, 1, 0): 0.125, (1, 0, 0): 0.25, (1, 1, 0): 0.125, (1, 1, 1): 0.125}
+engine.global_quad_pmf = {(1, 2, 3, 4): 0.3, (2, 3, 4, 5): 0.7}
+engine.global_compound_big_pmf = (
+    {(1, 2, 3, 4): 0.3, (2, 3, 4, 5): 0.7},
+    {(10, 20): 0.5, (30, 40): 0.5}
+)
+engine.global_compound_pmf = (
+    {(0, 0, 0): 0.1, (1, 1, 2): 0.2, (2, 1, 3): 0.3, (2, 2, 4): 0.4},
+    {1: 0.1, 2: 0.2, 3: 0.3, 4: 0.4}
+)
+
+print(engine.f_h1())
+print(engine.f_h2())
+print(engine.f_h3())
+print(engine.f_h4(0))
+print(engine.f_h4(1))
+print(engine.f_h5(1))
+print(engine.f_h6())
+print(engine.f_h7())
+print(engine.f_h8(1))
+print(engine.f_h9(1, 2))
+print(engine.f_h10())
+print(engine.f_h11())
+print(engine.f_h12(1))
+print(engine.f_h20(1))
+print(engine.f_h21(1, 1))
+print(engine.f_h13(1))
+print(engine.f_h14())
+
+print()
+print("SECTION I - RUNTIME ERRORS")
+print()
 
 try:
     engine.global_int = 1.23

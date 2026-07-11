@@ -108,10 +108,9 @@ Pmfs
 Q natively supports three kinds of pmf objects: Simple, Joint and
 Compound.
 
-| A **simple pmf** stores a distribution over a finite set of
-  nonnegative integers.
-| Its type is most commonly expressed as Pmf. Its value can be created
-  in a number of ways:
+A **simple pmf** stores a distribution over a finite set of nonnegative
+integers. Its type is most commonly expressed as Pmf. Its value can be created
+in a number of ways:
 
 -  By calling a sampling function.
 -  By calling a built-in function (such as ``bernoulli`` or
@@ -132,17 +131,37 @@ can be created in a number of ways:
 
 If p is a pmf of type ``Pmf{A,B,C}`` then ``p{A}`` extracts the marginal
 distribution of ``A`` from ``p``. Likewise, ``p{B,C|A=2}`` expresses the
-conditional joint distribution of ``B`` and ``C`` given ``A=2``. Note
-that these are extractions, not calculations because p is stored
-internally as a marginal and a list of conditional distributions. (The
-marginal of ``B`` or ``C`` cannot be obtained by extraction, although it
-can be calculated using a trivial sampling function.)
+conditional joint distribution of ``B`` and ``C`` given ``A=2``.
+Note that these are extractions, not calculations, because ``p``` is stored
+internally as the marginal of its first component together with a chain of
+conditional distributions (the conditional of each component given all
+earlier components).
+
+This storage structure determines what can be extracted. A valid extraction
+selects a contiguous run of one or more components. Every component
+preceding the run must be fixed to a value by the conditions;
+components after the run are not included. If the run starts at the
+first component, the result is a marginal pmf (``p{A}``, ``p{A,B}``);
+otherwise it is a conditional pmf (``p{B|A=a}``, ``p{B,C|A=a}``, ``p{C|A=a,B=b}``).
+For ``Pmf{A,B,C}``, these are the only valid forms.
+An extraction that leaves a preceding component free would require summing over it,
+which is a calculation rather than an extraction, and is rejected. In particular,
+``p{B}`` and ``p{C}`` (a later component with nothing fixed) and ``p{C|A=a}``
+(which fixes ``A``` but skips ``B```) are invalid. Each can instead be obtained
+from a sampling function. For efficiency, that function should extract the
+smallest valid pmf covering the required components and sample from that,
+rather than sampling the full joint pmf. For example, to obtain ``p{B}`` from
+``Pmf{A,B,C}``, extract ``p{A,B}`` and sample from it; sampling the full
+joint pmf ``p{A,B,C}`` would enumerate ``C``` needlessly.
 
 A **compound pmf** holds a collection of two or more simple and/or joint
 pmfs. Its purpose is to allow a sampling function to create more than
 one distribution. Its type is expressed in the form
-``Pmf{(A,B,C),(X)}``. The pmf components of this compound pmf are
-extracted by ``p{A,B,C}`` or ``p{X}``.
+``Pmf{(A,B,C),(X)}``. The extraction rules above apply to each component.
+A simple component such as ``(X)`` has only one variable, so the only
+extraction is ``p{X}``; a joint component such as ``(A,B,C)`` allows for
+the full range of extractions, including marginals (``p{A}``, ``p{A,B}``,
+``p{A,B,C}``) and conditionals (``p{B|A=a}``, ``p{B,C|A=a}``, ``p{C|A=a,B=b}``).
 
 Sampling functions
 ~~~~~~~~~~~~~~~~~~~~~~

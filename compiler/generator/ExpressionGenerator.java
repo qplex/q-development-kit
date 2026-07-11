@@ -302,6 +302,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					int destRVCount = destQualifier._simpleRVNames.size();
 					if (sourceRVCount > 1 && destRVCount == 1)
 						pw.print("lookupMarginalPmf(");
+					if (destRVCount > 1 && destRVCount < sourceRVCount)
+						pw.print("lookupPrefixJointPmf((QObject *)self, ");
 					if (opQualifier._category == Qualifier.Category.CONDITIONAL)
 						pw.print("lookupConditionalPmf(");
 
@@ -354,6 +356,11 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 						pw.print(")");
 					}
 
+					if (destRVCount > 1 && destRVCount < sourceRVCount) {
+						pw.print(",");
+						pw.print(destRVCount);
+						pw.print(")");
+					}
 					if (sourceRVCount > 1 && destRVCount == 1)
 						pw.print(")");
 

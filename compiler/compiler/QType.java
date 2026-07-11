@@ -363,26 +363,23 @@ public class QType {
 			return new QType(QParserConstants.PMF, qualifier);
 
 		if (_qualifier._category == Qualifier.Category.COMPOUND) {
-			int n = qualifier._simpleRVNames.size();
 			for (int i = 0; i < _qualifier._compoundRVNames.size(); i++) {
-				if (n != _qualifier._compoundRVNames.get(i).size())
-					continue;
-				if (isEqualIgnoreNull(qualifier._simpleRVNames, _qualifier._compoundRVNames.get(i), n))
-					return new QType(QParserConstants.PMF, qualifier);
+				Qualifier componentQualifier = new Qualifier(_qualifier._compoundRVNames.get(i));
+				QType componentType = new QType(QParserConstants.PMF, componentQualifier);
+				QType result = componentType.castTo(qualifier);
+				if (result != null)
+					return result;
 			}
 
+			// No match found, invalid PMF extraction
 			return null;
 		}
 
 		switch (qualifier._category) {
 		case SIMPLE:
-			if (qualifier._simpleRVNames.size() == 1 //
-					&& isEqualIgnoreNull(qualifier._simpleRVNames, _qualifier._simpleRVNames, 1))
-				return new QType(QParserConstants.PMF, new Qualifier(qualifier._simpleRVNames));
-
-			if (qualifier._simpleRVNames.size() == _qualifier._simpleRVNames.size() //
-					&& isEqualIgnoreNull(qualifier._simpleRVNames, _qualifier._simpleRVNames,
-							qualifier._simpleRVNames.size()))
+			int prefixLength = qualifier._simpleRVNames.size();
+			if (prefixLength >= 1 && prefixLength <= _qualifier._simpleRVNames.size() //
+					&& isEqualIgnoreNull(qualifier._simpleRVNames, _qualifier._simpleRVNames, prefixLength))
 				return new QType(QParserConstants.PMF, new Qualifier(qualifier._simpleRVNames));
 
 			return null;
@@ -393,9 +390,6 @@ public class QType {
 			int numOriginal = _qualifier._simpleRVNames.size();
 
 			if (numConditions + numRetained > numOriginal)
-				return null;
-
-			if (numConditions + numRetained < numOriginal && numRetained != 1)
 				return null;
 
 			ArrayList<String> conditionNames = new ArrayList<String>();

@@ -16,13 +16,13 @@ public Pmf globalSimplePmf;
 public PmfArray globalSimplePmfArray;
 public PmfMatrix globalSimplePmfMatrix;
 
-public Pmf{A,B} globalJointPmf;
-public PmfArray{A,B} globalJointPmfArray;
-public PmfMatrix{A,B} globalJointPmfMatrix;
+public Pmf{A,B,C} globalJointPmf;
+public PmfArray{A,B,C} globalJointPmfArray;
+public PmfMatrix{A,B,C} globalJointPmfMatrix;
 
-public Pmf{(A,B),(C)} globalCompoundPmf;
-public PmfArray{(A,B),(C)} globalCompoundPmfArray;
-public PmfMatrix{(A,B),(C)} globalCompoundPmfMatrix;
+public Pmf{(A,B,C),(D)} globalCompoundPmf;
+public PmfArray{(A,B,C),(D)} globalCompoundPmfArray;
+public PmfMatrix{(A,B,C),(D)} globalCompoundPmfMatrix;
 
 public interface int globalInterface(int i, boolean b);
 public InterfaceArray int globalInterfaceArray(int i, boolean b);
@@ -372,3 +372,89 @@ public boolean fG3() {
     Pmf pmf2 = pmf;
     return isSamePmfInstance(pmf, pmf2);
 }
+
+// SECTION H - PMF EXTRACTION
+
+public Pmf{A,B,C,D} globalQuadPmf;
+public Pmf{(A,B,C,D),(E,F)} globalCompoundBigPmf;
+
+public Pmf fH1() {
+    Pmf extractedPmf = globalJointPmf{A};
+    return extractedPmf;
+}
+
+public Pmf{A,B} fH2() {
+    Pmf{A,B} extractedPmf = globalJointPmf{A,B};
+    return extractedPmf;
+}
+
+public Pmf{A,B,C} fH3() {
+    Pmf{A,B,C} extractedPmf = globalJointPmf{A,B,C};
+    return extractedPmf;
+}
+
+public Pmf fH4(int aValue) {
+    Pmf extractedPmf = globalJointPmf{B|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf{B,C} fH5(int aValue) {
+    Pmf{B,C} extractedPmf = globalJointPmf{B,C|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf{A,B} fH6() {
+    Pmf{A,B} extractedPmf = globalQuadPmf{A,B};
+    return extractedPmf;
+}
+
+public Pmf{A,B,C} fH7() {
+    Pmf{A,B,C} extractedPmf = globalQuadPmf{A,B,C};
+    return extractedPmf;
+}
+
+public Pmf{B,C} fH8(int aValue) {
+    Pmf{B,C} extractedPmf = globalQuadPmf{B,C|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf fH9(int aValue, int bValue) {
+    Pmf extractedPmf = globalQuadPmf{C|A=aValue,B=bValue};
+    return extractedPmf;
+}
+
+public Pmf{A,B} fH10() {
+    Pmf{A,B} extractedPmf = globalCompoundPmf{A,B};
+    return extractedPmf;
+}
+
+public Pmf fH11() {
+    Pmf extractedPmf = globalCompoundPmf{A};
+    return extractedPmf;
+}
+
+public Pmf fH12(int aValue) {
+    Pmf extractedPmf = globalCompoundPmf{B|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf{B,C} fH20(int aValue) {
+    Pmf{B,C} extractedPmf = globalCompoundPmf{B,C|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf fH21(int aValue, int bValue) {
+    Pmf extractedPmf = globalCompoundPmf{C|A=aValue,B=bValue};
+    return extractedPmf;
+}
+
+public Pmf{B,C} fH13(int aValue) {
+    Pmf{B,C} extractedPmf = globalCompoundBigPmf{B,C|A=aValue};
+    return extractedPmf;
+}
+
+public Pmf{A,B} fH14() {
+    Pmf{A,B} extractedPmf = globalCompoundBigPmf{A,B};
+    return extractedPmf;
+}
+
