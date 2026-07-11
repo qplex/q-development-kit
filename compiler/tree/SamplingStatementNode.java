@@ -27,7 +27,7 @@ public class SamplingStatementNode extends QNode implements QParserTreeConstants
 			
 		int numberOfSamples = (identifierListNode.getTokenAndNodeCount()+1)/2;
 		int rhsDimension = rhs._type._qualifier._simpleRVNames.size();
-		if (numberOfSamples > rhsDimension)
+		if (numberOfSamples != rhsDimension)
 			throw new CompileException("Number of samples must equal number of RVs in distribution", rhs);
 		
 		_samplingCount = _samplingDepth = numberOfSamples;

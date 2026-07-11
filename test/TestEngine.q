@@ -311,7 +311,7 @@ public Pmf{Z,L} fD4() {
 }
 
 public Pmf fD5() {
-    z ~ mu;
+    z ~ mu{Z};
     return z;
 }
 
