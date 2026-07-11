@@ -90,7 +90,7 @@ You will receive the following output:
 
 ::
 
-       {1:0.05,2:0.5,3:0.45}
+       {1:0.05, 2:0.5, 3:0.45}
 
 Congratulations. You have now written and executed a Q program!
 
@@ -612,7 +612,9 @@ In Q, the for-loop takes the following form:
        for (i = n to m) {…}    
 
 where ``n`` and ``m`` are integer expressions. The iteration is from
-``n`` to ``m`` inclusive.
+``n`` to ``m`` inclusive. The loop variable is implicitly declared
+by the loop construct and must not be pre-declared. It is local to
+the loop scope.
 
 While-loop
 ^^^^^^^^^^^^^^^^
@@ -889,7 +891,8 @@ Constructor
 
 The optional declared function ``init`` is called upon startup. It can
 be used to initialize global variables and takes any number of
-parameters (including none).
+parameters (including none). It cannot be a public function and its 
+return type must be ``void``.
 
 Interfaces
 ^^^^^^^^^^^^^^^^
@@ -1037,6 +1040,9 @@ Why? Because sampling statements are implemented as for-loops that
 iterate through the sample values of a pmf. Such loops cannot extend
 beyond the block in which they were created.
 
+As a consequence of this rule, for-loops in Q cannot contain sampling statements. 
+We might add this capability later.
+
 **Rule 7**. Blocks must appear in function declarations, for-loops and
 if-else statements, and may not appear elsewhere.
 
@@ -1065,9 +1071,6 @@ Each Q source file defines a Python class that we call an engine. One or
 more engines may be packaged into a Python extension module when running
 the Q compiler.
 
-Engine names must be CamelCase. Module names must be lower case, with
-underscores allowed. These rules are consistent with Python
-recommendations, but for Q, they are mandatory.
 Engine names must be UpperCamelCase, with digits allowed except for the first character. 
 Module names must be lower case, with underscores and digits allowed except that the first character cannot be a digit.
 These rules are consistent with Python recommendations, but for Q, they are mandatory.
