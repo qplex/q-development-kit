@@ -750,8 +750,12 @@ void CreateExpression() #CreateExpression :
 }
 
 void PrimaryExpression() #PrimaryExpression :
-{}
+{ Token leftBraceToken; }
 {
+  LOOKAHEAD( <LBRACE> )
+  leftBraceToken = <LBRACE>
+  { throw new CompileException("pmf literals may appear only on the right-hand side of an assignment or in a return statement", leftBraceToken); }
+  |
   ( <LPAREN> Expression() <RPAREN> )
   |
   <IDENTIFIER>
