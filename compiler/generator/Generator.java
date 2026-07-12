@@ -20,6 +20,8 @@ public class Generator implements QParserConstants {
 
 	static PrintWriter _cSourceWriter;
 
+	static IndentationManager _indentationManager;
+
 	static String bracketedPaddedLineNumber(QNode node) {
 		return bracketedPaddedLineNumber(node.jjtGetFirstToken());
 	}

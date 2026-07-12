@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 
+import compiler.CompileException;
 import compiler.Engine;
 import compiler.QType;
 import compiler.Qualifier;
@@ -72,13 +73,18 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				return "safePow";
 			case SQRT:
 				return "safeSqrt";
+			case BRANCHPROBABILITY: {
+				int currentSamplingDepth = Generator._indentationManager.getSampleCount() - 1;
+				if (currentSamplingDepth < 0)
+					throw new CompileException("branchProbability() may only be used in a sampling function", firstToken);
+				return "samplingStack.branchProbability(" + currentSamplingDepth + ")";
+			}
 			case NUMBER:
 			case TRUE:
 			case FALSE:
 			case BERNOULLI:
 			case BINOMIAL:
 			case MULTINOMIAL:
-			case BRANCHPROBABILITY:
 			case RANDOMINT:
 			case RANDOMREAL:
 			case CREATEPMFFROMREALARRAY:
@@ -367,6 +373,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					break;
 				}
 				case JJTCALL: {
+					if (firstToken.kind == BRANCHPROBABILITY)
+						break;
 					boolean needsComma;
 					pw.print("(");
 					switch (firstToken.kind) {

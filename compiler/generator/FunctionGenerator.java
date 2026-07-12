@@ -40,6 +40,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 		}
 
 		_indentationManager = new IndentationManager();
+		Generator._indentationManager = _indentationManager;
 
 		Signature signature = symbol._signature;
 		_returnType = signature._returnType;
