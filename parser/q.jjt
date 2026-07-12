@@ -308,7 +308,7 @@ void ReturnExpression() #ReturnExpression :
 void ReturnExpressionElement() #ReturnExpressionElement :
 {}
 {
-  LOOKAHEAD(3)
+  LOOKAHEAD( <LPAREN> Expression() ( <COMMA> Expression() )* <RPAREN> ( <COMMA> | <SEMICOLON> ) )
   (
     <LPAREN>
     Expression()
