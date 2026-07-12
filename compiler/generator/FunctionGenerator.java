@@ -22,9 +22,23 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 	private QType _returnType;
 	private IndentationManager _indentationManager;
 	private Engine _engine;
+	private java.util.Set<String> _usedIndexVariableNames;
+
+	/** Returns a unique index-variable name within the current function, preserving the source line as the base. */
+	private String uniqueIndexVariableName(String baseName) {
+		String candidateName = baseName;
+		int disambiguator = 2;
+		while (_usedIndexVariableNames.contains(candidateName)) {
+			candidateName = baseName + "_" + disambiguator;
+			disambiguator++;
+		}
+		_usedIndexVariableNames.add(candidateName);
+		return candidateName;
+	}
 
 	/** Generates CPP code for a function implementation. */
 	void writeFunctionImplementation(Symbol symbol) {
+		_usedIndexVariableNames = new java.util.HashSet<>();
 		int samplingDepth = symbol._node.getChild(1).getNode(1)._samplingDepth;
 		if (samplingDepth == 0)
 			_samplingType = SamplingType.NONE;
@@ -828,7 +842,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					lhsArrayName = "_" + lhsArrayName;
 				String indexValue = ExpressionGenerator.generate(_engine,
 						statementNode.getChild(0).getChild(1).getChild(0));
-				String indexVariable = "index" + statementNode.getToken(1).beginLine;
+				String indexVariable = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine);
 				_indentationManager.writeIndent();
 				new TemplateExpander.FromLine(_engine, "int @INDEX_VARIABLE = @INDEX_VALUE;") //
 						.substitute("@INDEX_VARIABLE", indexVariable) //
@@ -861,10 +875,10 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				lhsMatrixName = "_" + lhsMatrixName;
 			String indexValueA = ExpressionGenerator.generate(_engine,
 					statementNode.getChild(0).getChild(1).getChild(0));
-			String indexVariableA = "index" + statementNode.getToken(1).beginLine + "A";
+			String indexVariableA = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine + "A");
 			String indexValueB = ExpressionGenerator.generate(_engine,
 					statementNode.getChild(0).getChild(2).getChild(0));
-			String indexVariableB = "index" + statementNode.getToken(1).beginLine + "B";
+			String indexVariableB = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine + "B");
 
 			_indentationManager.writeIndent();
 			new TemplateExpander.FromLine(_engine, "int @INDEX_VARIABLE = @INDEX_VALUE;") //
@@ -966,7 +980,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				lhsIndexBase = statementNode.getChild(0).getChild(0).getToken(0).image;
 			else
 				lhsIndexBase = "...";
-			String indexVariableName = "index" + statementNode.getToken(1).beginLine;
+			String indexVariableName = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine);
 			int n = statementNode.getChild(0).jjtGetNumChildren();
 			String indexVariableValue = ExpressionGenerator.generate(_engine,
 					statementNode.getChild(0).getChild(n - 1).getChild(0));
@@ -999,8 +1013,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				lhsIndexBase = statementNode.getChild(0).getChild(0).getToken(0).image;
 			else
 				lhsIndexBase = "...";
-			String indexVariableA = "index" + statementNode.getToken(1).beginLine + "A";
-			String indexVariableB = "index" + statementNode.getToken(1).beginLine + "B";
+			String indexVariableA = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine + "A");
+			String indexVariableB = uniqueIndexVariableName("index" + statementNode.getToken(1).beginLine + "B");
 			int n = statementNode.getChild(0).jjtGetNumChildren();
 			String indexVariableValueA = ExpressionGenerator.generate(_engine,
 					statementNode.getChild(0).getChild(n - 2).getChild(0));
