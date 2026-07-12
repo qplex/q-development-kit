@@ -132,7 +132,7 @@ can be created in a number of ways:
 If p is a pmf of type ``Pmf{A,B,C}`` then ``p{A}`` extracts the marginal
 distribution of ``A`` from ``p``. Likewise, ``p{B,C|A=2}`` expresses the
 conditional joint distribution of ``B`` and ``C`` given ``A=2``.
-Note that these are extractions, not calculations, because ``p``` is stored
+Note that these are extractions, not calculations, because ``p`` is stored
 internally as the marginal of its first component together with a chain of
 conditional distributions (the conditional of each component given all
 earlier components).
@@ -147,12 +147,12 @@ For ``Pmf{A,B,C}``, these are the only valid forms.
 An extraction that leaves a preceding component free would require summing over it,
 which is a calculation rather than an extraction, and is rejected. In particular,
 ``p{B}`` and ``p{C}`` (a later component with nothing fixed) and ``p{C|A=a}``
-(which fixes ``A``` but skips ``B```) are invalid. Each can instead be obtained
+(which fixes ``A` but skips ``B``) are invalid. Each can instead be obtained
 from a sampling function. For efficiency, that function should extract the
 smallest valid pmf covering the required components and sample from that,
 rather than sampling the full joint pmf. For example, to obtain ``p{B}`` from
 ``Pmf{A,B,C}``, extract ``p{A,B}`` and sample from it; sampling the full
-joint pmf ``p{A,B,C}`` would enumerate ``C``` needlessly.
+joint pmf ``p{A,B,C}`` would enumerate ``C`` needlessly.
 
 A **compound pmf** holds a collection of two or more simple and/or joint
 pmfs. Its purpose is to allow a sampling function to create more than
