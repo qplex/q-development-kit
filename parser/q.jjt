@@ -712,7 +712,7 @@ void PmfInitializerElement() #PmfInitializerElement :
 {}
 {
     (
-      LOOKAHEAD(3) ( <LPAREN> Expression() ( <COMMA> Expression() )* <RPAREN> )
+      LOOKAHEAD( <LPAREN> Expression() <COMMA> ) ( <LPAREN> Expression() ( <COMMA> Expression() )+ <RPAREN> )
       |
       Expression()
     )
