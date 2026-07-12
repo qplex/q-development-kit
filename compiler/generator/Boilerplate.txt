@@ -1723,7 +1723,7 @@ PyObject *Boolean_toPy(QObject * obj, Boolean b) {
 }
 
 Boolean Boolean_fromPy(QObject * obj, PyObject *pyObj) {
-    return PyLong_AsLong(pyObj) != 0L;
+    if (!PyBool_Check(pyObj))
         abortImport();
     return pyObj == Py_True;
 }
