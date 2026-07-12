@@ -1,3 +1,15 @@
+static PyObject *_q_module_self = NULL;
+
+static int _q_module_setattro(PyObject *self, PyObject *attr_name, PyObject *value) {
+    if (self == _q_module_self) {
+        PyErr_SetString(PyExc_AttributeError,
+            "module does not support setting attributes; "
+            "assign them to an engine instance instead");
+        return -1;
+    }
+    return PyObject_GenericSetAttr(self, attr_name, value);
+}
+
 PyMODINIT_FUNC PyInit_@MODULE-NAME(void) {
     PyObject *m;
     @REPEAT(
@@ -24,5 +36,7 @@ PyMODINIT_FUNC PyInit_@MODULE-NAME(void) {
         return NULL;
     }
 
+    _q_module_self = m;
+    Py_TYPE(m)->tp_setattro = _q_module_setattro;
     return m;
 }

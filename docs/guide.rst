@@ -1126,13 +1126,20 @@ function in quotes:
 
 You cannot call an interface directly from Python.
 
+Public variables are attributes of the engine instance, not of the
+module. Setting an attribute on the module itself is an error:
+
+::
+
+       qdemo.x = 42       # raises an AttributeError
+
 Note that you can copy an array or matrix from engine to Python, or from
 Python to engine, but you cannot change engine array or matrix elements
 individually from Python:
 
 ::
 
-       engine.a[3] = 42   # ERROR
+       engine.a[3] = 42   # no effect; no error is raised
 
 Here’s why: The array is copied from engine to Python, and an element of
 the Python array is modified, but then the Python array is discarded.
