@@ -23,6 +23,16 @@ public class ArrayInitializerNode extends QNode implements QParserTreeConstants 
 				throw new CompileException("Inconsistent types in initializer", getChild(0).getChild(i));
 		}
 	
+		if (elementType._kind == INTARRAY || elementType._kind == REALARRAY
+				|| elementType._kind == BOOLEANARRAY || elementType._kind == PMFARRAY
+				|| elementType._kind == INTERFACEARRAY) {
+			for (int rowIndex = 0; rowIndex < _elementCount; rowIndex++) {
+				QNode rowNode = getChild(0).getChild(rowIndex);
+				if (rowNode.getId() != JJTARRAYINITIALIZER)
+					throw new CompileException("Matrix initializer rows must be array literals", rowNode);
+			}
+		}
+
 		switch (elementType._kind) {
 		case INT:
 			_type = QType.INTARRAY;
