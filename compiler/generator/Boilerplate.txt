@@ -1724,6 +1724,8 @@ PyObject *Boolean_toPy(QObject * obj, Boolean b) {
 
 Boolean Boolean_fromPy(QObject * obj, PyObject *pyObj) {
     return PyLong_AsLong(pyObj) != 0L;
+        abortImport();
+    return pyObj == Py_True;
 }
 
 class SampleEnumeratorFor_toPy : public SampleEnumerator {

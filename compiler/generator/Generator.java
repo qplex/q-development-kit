@@ -193,6 +193,9 @@ public class Generator implements QParserConstants {
 				QType type = engine._symbolTable.get(name)._type;
 				switch (type._kind) {
 
+				case INT:
+				case REAL:
+				case BOOLEAN:
 				case INTARRAY:
 				case REALARRAY:
 				case BOOLEANARRAY:
@@ -394,25 +397,6 @@ public class Generator implements QParserConstants {
 		// PyMemberDef
 		{
 			_cSourceWriter.println("PyMemberDef _" + engineName + "_members[] = {");
-			for (String name : engine._symbolTable.publicGlobalNames()) {
-				Symbol symbol = engine._symbolTable.get(name);
-				String membertype;
-				switch (symbol._type._kind) {
-				case INT:
-					membertype = "T_INT";
-					break;
-				case REAL:
-					membertype = "T_DOUBLE";
-					break;
-				case BOOLEAN:
-					membertype = "T_BOOL";
-					break;
-				default:
-					continue;
-				}
-				_cSourceWriter.printf("    { \"%s\", %s, offsetof(_%s_object, _%s), 0, NULL },\n", toPythonName(name),
-						membertype, engineName, name);
-			}
 
 			(new TemplateExpander.FromLine(
 					"    { \"current_memory_use\", T_ULONGLONG, offsetof(_@ENGINE_object, currentMemoryUse), READONLY, NULL },")) //
@@ -442,9 +426,6 @@ public class Generator implements QParserConstants {
 			for (String name : engine._symbolTable.publicGlobalNames()) {
 				Symbol symbol = engine._symbolTable.get(name);
 				switch (symbol._type._kind) {
-				case INT:
-				case REAL:
-				case BOOLEAN:
 				case QType.FUNCTION_KIND:
 					continue;
 				default:
