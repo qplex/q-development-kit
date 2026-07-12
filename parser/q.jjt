@@ -224,7 +224,7 @@ void Statement() :
 |
   WhileStatement()
 |
-  DeclarationStatement()
+  LOOKAHEAD( [ <PUBLIC> ] Type() <IDENTIFIER> ( <SEMICOLON> | <ASSIGN> ) ) DeclarationStatement()
 |
   LOOKAHEAD(3) SamplingStatement()
 |
