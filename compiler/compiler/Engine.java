@@ -162,9 +162,7 @@ public class Engine {
 				break;
 			}
 			case QParserTreeConstants.JJTIFSTATEMENT:
-				checkBlock((BlockNode) child.getChild(1));
-				if (child.jjtGetNumChildren() > 2)
-					checkBlock((BlockNode) child.getChild(2));
+				checkIfStatement(child);
 				break;
 			case QParserTreeConstants.JJTFORSTATEMENT:
 				checkToken(child.getNode(1).getToken(1));
@@ -174,6 +172,17 @@ public class Engine {
 				checkBlock((BlockNode) child.getChild(1));
 				break;
 			}
+		}
+	}
+
+	private void checkIfStatement(QNode ifStatementNode) {
+		checkBlock((BlockNode) ifStatementNode.getChild(1));
+		if (ifStatementNode.jjtGetNumChildren() > 2) {
+			QNode elseClauseNode = ifStatementNode.getChild(2);
+			if (elseClauseNode.getId() == QParserTreeConstants.JJTIFSTATEMENT)
+				checkIfStatement(elseClauseNode);
+			else
+				checkBlock((BlockNode) elseClauseNode);
 		}
 	}
 
