@@ -87,6 +87,11 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 				}
 			}
 
+			for (QNode returnValueNode : block._returnValueNodes)
+				if (returnValueNode._type._kind != RETURN)
+					throw new CompileException("Sampling functions must return sampled variables or an integer expression of them",
+							returnValueNode);
+
 			if (symbol._signature._returnType._qualifier._category == Qualifier.Category.SIMPLE) {
 				int numberOfSamplesRequired = symbol._signature._returnType._qualifier._simpleRVNames.size();
 				for (QNode returnValueNode : block._returnValueNodes) {
@@ -99,7 +104,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 									(QNode) returnValueNode.jjtGetParent());
 					for (int i = 0; i < numberOfSamplesRequired; i++)
 						if (returnValueNode.getChild(i).getChild(0)._type != QType.INT)
-							throw new CompileException("Returned samples must be nonnegative integers",
+							throw new CompileException("Sampling functions must return sampled variables or an integer expression of them",
 									(QNode) returnValueNode.jjtGetParent());
 				}
 				return;
@@ -121,7 +126,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 								(QNode) returnValueNode.getChild(i));
 					for (int j = 0; j < numberOfSamplesRequiredInGroup; j++)
 						if (returnValueNode.getChild(i).getChild(j)._type != QType.INT)
-							throw new CompileException("Returned samples must be nonnegative integers",
+							throw new CompileException("Sampling functions must return sampled variables or an integer expression of them",
 									(QNode) returnValueNode.jjtGetParent());
 				}
 
