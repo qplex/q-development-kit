@@ -273,7 +273,9 @@ public class QType {
 		case QParserConstants.INTERFACEMATRIX:
 			if (_kind != t._kind)
 				return false;
-			return t._signature == null;
+			if (t._signature == null)
+				return true;
+			return _signature.equals(t._signature);
 
 		default:
 			return _kind == t._kind;
