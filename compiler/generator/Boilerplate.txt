@@ -526,7 +526,7 @@ Pmf *defaultPmf(QObject *obj, PmfConfig *);
 
 PmfArray *createPmfArray(QObject *obj, PmfConfig *pmfConfig, int length) {
     if (length <= 0)
-        abort("Invalid array dimensions");
+        abort("Invalid array size");
     PmfArray *a = allocatePmfArray(obj, length);
     if (pmfConfig) 
         for (int i=0; i<length; i++)
@@ -536,7 +536,7 @@ PmfArray *createPmfArray(QObject *obj, PmfConfig *pmfConfig, int length) {
 
 InterfaceArray *createInterfaceArray(QObject *obj, void *defaultImplementation, int length) {
     if (length <= 0)
-        abort("Invalid array dimensions");
+        abort("Invalid array size");
     InterfaceArray *a = allocateInterfaceArray(obj, length);
     if (defaultImplementation)
         for (int i=0; i<length; i++)
