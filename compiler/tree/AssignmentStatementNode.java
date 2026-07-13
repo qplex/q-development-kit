@@ -25,6 +25,8 @@ public class AssignmentStatementNode extends QNode implements QParserTreeConstan
 		QType sourceType = sourceNode._type;
 
 		if (sourceNode.getId() == JJTCREATEEXPRESSION) {
+			if (sourceNode._type._kind != targetType._kind)
+				throw new CompileException("Type mismatch", sourceNode);
 			_type = sourceNode._type = targetType;
 		} else {
 			if (!targetType.isAssignableFrom(sourceType))
