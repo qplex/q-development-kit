@@ -544,52 +544,65 @@ InterfaceArray *createInterfaceArray(QObject *obj, void *defaultImplementation, 
     return a;
 }
 
-IntMatrix *createIntMatrix(QObject *obj, int rowCount, int columnCount) {
-    if (rowCount <= 0 || columnCount < 0)
-        abort("Invalid matrix dimensions");
-
+IntMatrix *allocateIntMatrix(QObject *obj, int rowCount, int columnCount) {
     size_t size = sizeOfStructWithArraySize(IntMatrix, elements, rowCount);
     IntMatrix *m = (IntMatrix *) qmalloc(obj, size);
     m->length = rowCount;
 
-    if (columnCount) 
+    if (columnCount)
         for (int i=0; i<rowCount; i++)
             m->elements[i] = createIntArray(obj, columnCount);
+
     return m;
 }
 
-RealMatrix *createRealMatrix(QObject *obj, int rowCount, int columnCount) {
-    if (rowCount <= 0 || columnCount < 0)
-        abort("Invalid matrix dimensions");
-
+RealMatrix *allocateRealMatrix(QObject *obj, int rowCount, int columnCount) {
     size_t size = sizeOfStructWithArraySize(RealMatrix, elements, rowCount);
     RealMatrix *m = (RealMatrix *) qmalloc(obj, size);
     m->length = rowCount;
 
-    if (columnCount) 
+    if (columnCount)
         for (int i=0; i<rowCount; i++)
             m->elements[i] = createRealArray(obj, columnCount);
 
     return m;
 }
 
-BooleanMatrix *createBooleanMatrix(QObject *obj, int rowCount, int columnCount) {
-    if (rowCount <= 0 || columnCount < 0)
-        abort("Invalid matrix dimensions");
-
+BooleanMatrix *allocateBooleanMatrix(QObject *obj, int rowCount, int columnCount) {
     size_t size = sizeOfStructWithArraySize(BooleanMatrix, elements, rowCount);
     BooleanMatrix *m = (BooleanMatrix *) qmalloc(obj, size);
     m->length = rowCount;
 
-    if (columnCount) 
+    if (columnCount)
         for (int i=0; i<rowCount; i++)
             m->elements[i] = createBooleanArray(obj, columnCount);
 
     return m;
 }
 
+IntMatrix *createIntMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount <= 0)
+        abort("Invalid matrix dimensions");
+
+    return allocateIntMatrix(obj, rowCount, columnCount);
+}
+
+RealMatrix *createRealMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount <= 0)
+        abort("Invalid matrix dimensions");
+
+    return allocateRealMatrix(obj, rowCount, columnCount);
+}
+
+BooleanMatrix *createBooleanMatrix(QObject *obj, int rowCount, int columnCount) {
+    if (rowCount <= 0 || columnCount <= 0)
+        abort("Invalid matrix dimensions");
+
+    return allocateBooleanMatrix(obj, rowCount, columnCount);
+}
+
 PmfMatrix *createPmfMatrix(QObject *obj, PmfConfig *pmfConfig, int rowCount, int columnCount) {
-    if (rowCount <= 0 || columnCount < 0)
+    if (rowCount <= 0 || columnCount <= 0)
         abort("Invalid matrix dimensions");
 
     PmfMatrix *m = allocatePmfMatrix(obj, rowCount, columnCount);
@@ -603,7 +616,7 @@ PmfMatrix *createPmfMatrix(QObject *obj, PmfConfig *pmfConfig, int rowCount, int
 }
 
 InterfaceMatrix *createInterfaceMatrix(QObject *obj, void *defaultImplementation, int rowCount, int columnCount) {
-    if (rowCount <= 0 || columnCount < 0)
+    if (rowCount <= 0 || columnCount <= 0)
         abort("Invalid matrix dimensions");
     
     InterfaceMatrix *m = allocateInterfaceMatrix(obj, rowCount, columnCount);
@@ -759,7 +772,7 @@ InterfaceArray *initializeInterfaceArray(QObject *obj, int length, ...) {
 IntMatrix *initializeIntMatrix(QObject *obj, int rowCount, ...) {
     va_list valist;
     va_start(valist, rowCount);
-    IntMatrix *m = createIntMatrix(obj, rowCount, 0);
+    IntMatrix *m = allocateIntMatrix(obj, rowCount, 0);
     for (int i = 0; i < rowCount; i++) {
         int length = va_arg(valist, Int);
         IntArray *a = createIntArray(obj, length);
@@ -774,7 +787,7 @@ IntMatrix *initializeIntMatrix(QObject *obj, int rowCount, ...) {
 RealMatrix *initializeRealMatrix(QObject *obj, int rowCount, ...) {
     va_list valist;
     va_start(valist, rowCount);
-    RealMatrix *m = createRealMatrix(obj, rowCount, 0);
+    RealMatrix *m = allocateRealMatrix(obj, rowCount, 0);
     for (int i = 0; i < rowCount; i++) {
         int length = va_arg(valist, Int);
         RealArray *a = createRealArray(obj, length);
@@ -789,7 +802,7 @@ RealMatrix *initializeRealMatrix(QObject *obj, int rowCount, ...) {
 BooleanMatrix *initializeBooleanMatrix(QObject *obj, int rowCount, ...) {
     va_list valist;
     va_start(valist, rowCount);
-    BooleanMatrix *m = createBooleanMatrix(obj, rowCount, 0);
+    BooleanMatrix *m = allocateBooleanMatrix(obj, rowCount, 0);
     for (int i = 0; i < rowCount; i++) {
         int length = va_arg(valist, Int);
         BooleanArray *a = createBooleanArray(obj, length);
@@ -804,7 +817,7 @@ BooleanMatrix *initializeBooleanMatrix(QObject *obj, int rowCount, ...) {
 PmfMatrix *initializePmfMatrix(QObject *obj, int rowCount, ...) {
     va_list valist;
     va_start(valist, rowCount);
-    PmfMatrix *m = createPmfMatrix(obj, NULL, rowCount, 0);
+    PmfMatrix *m = allocatePmfMatrix(obj, rowCount, 0);
     for (int i = 0; i < rowCount; i++) {
         int length = va_arg(valist, Int);
         PmfArray *a = createPmfArray(obj, NULL, length);
@@ -819,7 +832,7 @@ PmfMatrix *initializePmfMatrix(QObject *obj, int rowCount, ...) {
 InterfaceMatrix *initializeInterfaceMatrix(QObject *obj, int rowCount, ...) {
     va_list valist;
     va_start(valist, rowCount);
-    InterfaceMatrix *m = createInterfaceMatrix(obj, NULL, rowCount, 0);
+    InterfaceMatrix *m = allocateInterfaceMatrix(obj, rowCount, 0);
     for (int i = 0; i < rowCount; i++) {
         int length = va_arg(valist, Int);
         InterfaceArray *a = createInterfaceArray(obj, NULL, length);
@@ -1935,7 +1948,7 @@ IntMatrix *IntMatrix_fromPy(QObject *obj, PyObject *pyObj) {
     if (!rowCount)
         abortImport();
   
-    IntMatrix *m = createIntMatrix(obj, rowCount, 0);
+    IntMatrix *m = allocateIntMatrix(obj, rowCount, 0);
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
@@ -1973,7 +1986,7 @@ RealMatrix *RealMatrix_fromPy(QObject * obj, PyObject *pyObj) {
     if (!rowCount)
         abortImport();
   
-    RealMatrix *m = createRealMatrix(obj, rowCount, 0);
+    RealMatrix *m = allocateRealMatrix(obj, rowCount, 0);
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
@@ -2001,7 +2014,7 @@ BooleanMatrix *BooleanMatrix_fromPy(QObject *obj, PyObject *pyObj) {
     if (!rowCount)
         abortImport();
   
-    BooleanMatrix *m = createBooleanMatrix(obj, rowCount, 0);
+    BooleanMatrix *m = allocateBooleanMatrix(obj, rowCount, 0);
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
