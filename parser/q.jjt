@@ -698,12 +698,16 @@ void PmfInitializer() #PmfInitializer :
 }
 
 void PmfInitializerGroup() #PmfInitializerGroup :
-{}
+{ Token leftBraceToken; }
 {
   (
-    <LBRACE>
+    leftBraceToken = <LBRACE>
+    (
       PmfInitializerElement()
       ( <COMMA> PmfInitializerElement() )*
+    |
+      { throw new CompileException("Pmf literal must have at least one outcome", leftBraceToken); }
+    )
     <RBRACE>
   )
 }
