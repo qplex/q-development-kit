@@ -79,6 +79,7 @@ public class QCompiler {
 			}
 		} catch (Exception x) {
 			x.printStackTrace();
+			System.exit(1);
 		}
 	}
 
