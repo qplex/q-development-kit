@@ -54,12 +54,80 @@ algorithmically-specified functions of random variables of known pmfs.
 
 Getting started with Q
 -------------------------
+You can execute Q programs on Google Colab or on your local machine.
+You don't need to install anything on your local machine when you use Colab.
+
+Using Q on Google Colab
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Step 1.** Navigate to https://colab.research.google.com/ and create a new notebook.
+
+**Step 2.** Set up your notebook for Q development by copying the following into the first cell of your notebook
+and executing the cell:
+
+::
+
+       !curl -s https://api.github.com/repos/qplex/q-development-kit/releases/latest | \
+       grep releases/download | cut -d : -f 2,3 | tr -d \" | wget -qi - && \
+       unzip -j -qo $(ls QDK*.zip) "QCompiler.jar" "qcompile.py"
+
+**Step 3.**  Store Q source as a string by copying the following into the next cell of your notebook and executing the cell:
+
+::
+
+       q_source = '''
+       public Pmf convolution(Pmf f, Pmf g) {
+           i ~ f;
+           j ~ g;
+           return i+j;
+       }
+       '''
+
+**Step 4.**  Build an extension module by copying the following into the next cell of your notebook and executing the cell:
+
+::
+
+       from qcompile import QModule
+       q_module = QModule('qtest')
+       q_module.add_q_class('Convolution', q_source)
+       q_module.build()
+
+You can alternatively upload Q files via Colab's Files pane and pass them to the constructor,
+in which case class names are derived from the filenames:
+
+::
+
+       q_module = QModule('qtest', q_filenames=['Convolution.q'])
+       q_module.build()
+
+**Step 5.** Import and use the extension module by copying the following into the next cell of your
+notebook and executing the cell. Note that a compiled module can be imported only once per runtime:
+if you change the Q source and rebuild, restart the runtime before re-importing.
+
+::
+
+       import qtest
+       engine = qtest.Convolution()
+       p1 = {0:0.1, 1:0.9}
+       p2 = {1:0.5, 2:0.5}
+       print(engine.convolution(p1, p2))
+
+You will receive the following output:
+
+::
+
+       {1: 0.05, 2: 0.5, 3: 0.45}
+
+Congratulations. You have now written and executed a Q program on Google Colab!
+
+Using Q on a local machine
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 First, make sure the following is installed on your computer:
 
 -  Python 3
 -  Java runtime (to execute the Q compiler)
--  C compiler (to build the extension module)
+-  C++ compiler (to build the extension module)
 -  Setuptools (Python package) (to build the extension module)
 
 **Step 1.** Create a temporary directory (aka folder).
@@ -90,9 +158,9 @@ You will receive the following output:
 
 ::
 
-       {1:0.05, 2:0.5, 3:0.45}
+       {1: 0.05, 2: 0.5, 3: 0.45}
 
-Congratulations. You have now written and executed a Q program!
+Congratulations. You have now written and executed a Q program on a local machine!
 
 
 Key features of Q
@@ -147,7 +215,7 @@ For ``Pmf{A,B,C}``, these are the only valid forms.
 An extraction that leaves a preceding component free would require summing over it,
 which is a calculation rather than an extraction, and is rejected. In particular,
 ``p{B}`` and ``p{C}`` (a later component with nothing fixed) and ``p{C|A=a}``
-(which fixes ``A` but skips ``B``) are invalid. Each can instead be obtained
+(which fixes ``A`` but skips ``B``) are invalid. Each can instead be obtained
 from a sampling function. For efficiency, that function should extract the
 smallest valid pmf covering the required components and sample from that,
 rather than sampling the full joint pmf. For example, to obtain ``p{B}`` from
@@ -189,7 +257,7 @@ This is accomplished by the following sampling function:
 
 ::
 
-       public Pmf f(real p real q) {
+       public Pmf f(real p, real q) {
            i ~ bernoulli(p);
            j ~ bernoulli(q);
            return i+j;
@@ -204,7 +272,7 @@ a regular function, like this:
 
 ::
 
-       public Pmf g(real p real q) {
+       public Pmf g(real p, real q) {
            return { 0:p*p, 1:1-p*p-q*q, 2:q*q };
        }
 
@@ -253,7 +321,7 @@ binomial restricted to its tail:
 
 ::
 
-       public Pmf h(real p, int k) {
+       public Pmf h(int n, real p, int k) {
            i ~ binomial(n, p);
            if (i < k) {
                skip;
@@ -408,7 +476,7 @@ Every type has an associated default value:
 Type                     Default value
 ======================== =============================
 ``int``                  ``0``
-``real``                 ``0.1``
+``real``                 ``0.0``
 ``boolean``              ``false``
 ``Pmf``                  ``{0:1.0}``
 ``Pmf{?,?}``             ``{(0,0):1.0}``
@@ -430,8 +498,8 @@ Type                     Default value
 Operators
 ~~~~~~~~~~~
 
-Q supports the usual arithmetic binary operators ``+``, ``–``, ``*``, /
-as well as the negative unary operator ``–``. A slash ( ``/`` ) denotes
+Q supports the usual arithmetic binary operators ``+``, ``–``, ``*``, ``/``
+as well as the negative unary operator ``-``. A slash ( ``/`` ) denotes
 real division, even when the operands are integers.
 
 Q supports the logical operators ``&&`` and ``||`` and the “not” unary
@@ -609,7 +677,7 @@ In Q, the for-loop takes the following form:
 
 ::
 
-       for (i = n to m) {…}    
+       for (i = n to m) { … }
 
 where ``n`` and ``m`` are integer expressions. The iteration is from
 ``n`` to ``m`` inclusive. The loop variable is implicitly declared
@@ -623,7 +691,7 @@ A while-loop repeats so long as a boolean expression is true:
 
 ::
 
-       while (_boolean expression_) {…}
+       while (_boolean expression_) { … }
 
 If / else
 ^^^^^^^^^^^^^^^
@@ -842,10 +910,10 @@ Returns a multivariate hypergeometric pmf with parameters:
 -  The number of question marks in the returned pmf configuration must
    equal ``d``
 -  The length of array ``b`` must equal ``d``
--  The sum of elements in ``b`` must equal ``N``.
+-  The sum of elements in ``b`` must equal ``bigN``.
 
 Pmf address comparison
-^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``boolean isSamePmfInstance(Pmf a, Pmf b)``
 
@@ -868,8 +936,9 @@ Branch probability
 
 ``real branchProbability()``
 
-Used in a sampling function to retrieve the probability of reaching the
-statement in which the call appears.
+Used in a sampling function to retrieve the probability of the particular
+sequence of sampled outcomes that led to this statement;
+unaffected by any later skip renormalization.
 
 Declared functions
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -956,8 +1025,9 @@ single text file. Why? Because multiple source files are harder to
 implement. We might add this capability later.
 
 **Rule 2**. You cannot use a symbol until after you have declared it.
-Why? Because two-pass compilers are harder to implement. C carries the
-same restriction. We might add this capability later.
+Why? Because two-pass compilers are harder to implement. A function is
+declared only after its complete definition, so a function cannot call
+itself: recursion is not supported. We might add this capability later.
 
 **Rule 3**. Functions and interfaces must have global scope. Why?
 Because Q is not object-oriented. C carries the same restriction.
@@ -969,13 +1039,13 @@ declaration.
 
 ::
 
-       public int NumberOfServers;
+       public int numberOfServers;
 
 (illegal)
 
 ::
 
-       public int NumberOfServers = 42;
+       public int numberOfServers = 42;
 
 Why? Because the sequence in which initial values are assigned could be
 ambiguous. However, initial values may be assigned by the constructor.
