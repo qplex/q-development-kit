@@ -37,6 +37,12 @@ public class Engine {
 			QParser parser = new QParser(_fis);
 			_root = (QNode) parser.run();
 			checkForNameConflict();
+
+			// A branchProbability() usage that no enclosing block satisfied with a
+			// preceding sampling statement is an error.
+			if (_root._pendingBranchProbabilityToken != null)
+				throw new CompileException("branchProbability() may only be used in a sampling function",
+						_root._pendingBranchProbabilityToken);
 		} catch (IOException x) {
 			System.err.println(_filename);
 			System.err.println(x.getMessage());

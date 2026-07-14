@@ -34,9 +34,16 @@ public class BlockNode extends QNode implements QParserTreeConstants {
 	void initialize() {
 		Engine._instance._symbolTable.leaveBlock();
 
+		// Helps identify branchProbability() usage for this block
+		Token firstUnsatisfiedBranchProbabilityToken = null;
+
 		for (int i = 0; i < jjtGetNumChildren(); i++) {
 			if (_isTerminal)
 				throw new CompileException("Unreachable statement", getChild(i));
+
+			if (getChild(i)._pendingBranchProbabilityToken != null && _samplingCount == 0
+					&& firstUnsatisfiedBranchProbabilityToken == null)
+				firstUnsatisfiedBranchProbabilityToken = getChild(i)._pendingBranchProbabilityToken;
 
 			_samplingDepth = Math.max(_samplingDepth, _samplingCount + getChild(i)._samplingDepth);
 			_samplingCount += getChild(i)._samplingCount;
@@ -54,6 +61,8 @@ public class BlockNode extends QNode implements QParserTreeConstants {
 					_returnValueNodes.addAll(getChild(i)._returnValueNodes);
 			}
 		}
+
+		_pendingBranchProbabilityToken = firstUnsatisfiedBranchProbabilityToken;
 
 		if (_samplingDepth > 0 && !_isTerminal) 
 			throw new CompileException("Block containing sampling statement must be left through a return or skip statement", this);		

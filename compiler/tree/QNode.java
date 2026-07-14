@@ -26,6 +26,15 @@ public abstract class QNode extends SimpleNode implements QParserTreeConstants, 
 	public int _samplingCount;
 	public int _samplingDepth;
 	public boolean _hasSkipBeforeSampling;
+
+	/**
+	 * First token of a branchProbability() usage in this subtree that is not (yet)
+	 * preceded by a sampling statement in an enclosing block; null if there is no
+	 * such usage. Set in PrimaryExpressionNode, cleared in BlockNode when a
+	 * preceding sampling statement satisfies the usage, and reported as an error
+	 * by Engine if still pending at the root.
+	 */
+	public Token _pendingBranchProbabilityToken;
 	public boolean _isTerminal;
 	ArrayList<QNode> _returnValueNodes;
 	
@@ -96,6 +105,17 @@ public abstract class QNode extends SimpleNode implements QParserTreeConstants, 
 				currentChildIndex++;
 				currentNode = currentChildIndex < numChildren ? (QNode) children[currentChildIndex] : null;
 			} else {
+				break;
+			}
+		}
+
+		// Propagate any pending branchProbability() usage upward. BlockNode.initialize re-derives this field for
+		// blocks, clearing usages preceded by a sampling statement.
+		int childNodeCount = children != null ? children.length : 0;
+		for (int childIndex = 0; childIndex < childNodeCount; childIndex++) {
+			QNode childNode = (QNode) children[childIndex];
+			if (childNode._pendingBranchProbabilityToken != null) {
+				_pendingBranchProbabilityToken = childNode._pendingBranchProbabilityToken;
 				break;
 			}
 		}

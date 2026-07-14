@@ -4,7 +4,6 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ArrayList;
 
-import compiler.CompileException;
 import compiler.Engine;
 import compiler.QType;
 import compiler.Qualifier;
@@ -75,8 +74,6 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				return "safeSqrt";
 			case BRANCHPROBABILITY: {
 				int currentSamplingDepth = Generator._indentationManager.getSampleCount() - 1;
-				if (currentSamplingDepth < 0)
-					throw new CompileException("branchProbability() may only be used in a sampling function", firstToken);
 				return "samplingStack.branchProbability(" + currentSamplingDepth + ")";
 			}
 			case NUMBER:

@@ -59,6 +59,10 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 			_type = builtinFunctionType(QType.SIMPLE_PMF, QType.INT, QType.INT, QType.INT);
 			break;
 		case BRANCHPROBABILITY:
+			// Record the usage for the sampling-context check; see QNode, BlockNode and Engine.
+			_pendingBranchProbabilityToken = jjtGetFirstToken();
+			_type = builtinFunctionType(QType.REAL);
+			break;
 		case RANDOMREAL:
 			_type = builtinFunctionType(QType.REAL);
 			break;
