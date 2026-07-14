@@ -15,8 +15,15 @@ public class TokenStatementNode extends QNode implements QParserTreeConstants {
 	void initialize() {
 		boolean isPublic = getToken(0).kind == PUBLIC;
 		int k = isPublic ? 1 : 0;
+		if (getTokenAndNodeCount() < k + 5)
+			return;
 		String token = getToken(k+1).image;
-		int value = Integer.parseInt(getToken(k+3).image);
+		int value;
+		try {
+			value = Integer.parseInt(getToken(k+3).image);
+		} catch (NumberFormatException e) {
+			throw new CompileException("A token value must be a nonnegative integer", getToken(k+3));
+		}
 		try {
 			Engine._instance._tokenTable.add(isPublic, token, value);
 		} catch (TokenAlreadyDeclaredException e) {
