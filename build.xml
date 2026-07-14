@@ -114,6 +114,9 @@
 			<fileset dir="test">
 				<include name="*.*"/>
 			</fileset>
+			<fileset dir="python-wrapper">
+				<include name="*.*"/>
+			</fileset>
 		</copy>
 
 		<copy file="build/docs/_build/latex/qdeveloperguide.pdf" tofile="build/qdk/Q Developer Guide ${version}.pdf"/>

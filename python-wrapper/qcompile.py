@@ -53,7 +53,7 @@ def _is_valid_module_name(name):
 def _is_valid_q_class_name(name):
     if not isinstance(name, str) or not name or not name[0].isupper():
         return False
-    return name[1:].isalnum()
+    return name[1:] == '' or name[1:].isalnum()
 
 
 class QModule:

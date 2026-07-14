@@ -86,6 +86,8 @@ public class QCompiler {
 	// A valid module name contains lower-case letters, digits and underscores, and
 	// starts with a letter or an underscore.
 	private static boolean isValidModulename(String name) {
+		if (name.isEmpty())
+			return false;
 		char c = name.charAt(0);
 		if (Character.isDigit(c))
 			return false;
@@ -109,6 +111,9 @@ public class QCompiler {
 			return false;
 
 		name = name.substring(0, name.length() - 2);
+
+		if (name.isEmpty())
+			return false;
 
 		char c = name.charAt(0);
 		if (!Character.isUpperCase(c))
