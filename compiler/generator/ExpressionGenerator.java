@@ -200,7 +200,6 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				pw.print(generate(engine, node.getChild(0)));
 				pw.print("->toPmfAndDelete()");
 				return sw.toString();
-
 			case COMPOUND: {
 				int n = node.jjtGetNumChildren();
 				pw.print("createCompoundPmf((QObject *)self, " + n);
@@ -208,7 +207,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					pw.print(",");
 					if (node.getChild(i).getChild(0).isToken(0)
 							&& node.getChild(i).getChild(0).getToken(0).kind == LPAREN)
-						pw.print("(new JointAccumulator((QObject *)self, " + n + "))");
+						pw.print("(new JointAccumulator((QObject *)self, "
+								+ (node.getChild(i).getChild(0).jjtGetNumChildren() - 1) + "))");
 					else
 						pw.print("(new SimpleAccumulator((QObject *)self))");
 					pw.print(generate(engine, node.getChild(i)));
