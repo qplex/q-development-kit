@@ -587,7 +587,7 @@ void AttributeExpression() #AttributeExpression(>1) :
 void SuffixedExpression() #SuffixedExpression(>1) :
 {}
 {
-  PrimaryExpression()
+  ( PrimaryExpression() | DeterminateCreateExpression() )
   ( Suffix() )*
 }
 
@@ -728,6 +728,23 @@ void CreateExpression() #CreateExpression :
 {}
 {
   (
+    <CREATEPMFARRAY>
+    |
+    <CREATEPMFMATRIX>
+    |
+    <CREATEINTERFACEARRAY>
+    |
+    <CREATEINTERFACEMATRIX>
+  )
+  <LPAREN>
+  ExpressionList()
+  <RPAREN>
+}
+
+void DeterminateCreateExpression() #CreateExpression :
+{}
+{
+  (
     <CREATEINTARRAY>
     |
     <CREATEREALARRAY>
@@ -739,14 +756,6 @@ void CreateExpression() #CreateExpression :
     <CREATEREALMATRIX>
     |
     <CREATEBOOLEANMATRIX>
-    |
-    <CREATEPMFARRAY>
-    |
-    <CREATEPMFMATRIX>
-    |
-    <CREATEINTERFACEARRAY>
-    |
-    <CREATEINTERFACEMATRIX>
   )
   <LPAREN>
   ExpressionList()
