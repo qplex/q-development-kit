@@ -63,6 +63,10 @@ public class AssignmentStatementNode extends QNode implements QParserTreeConstan
 			QNode finalSuffix = targetNode.getChild(n - 1);
 			if (finalSuffix.getId() != JJTLOOKUP)
 				throw new CompileException("Syntax error", getToken(1));
+
+			QType finalSuffixBaseType = ((SuffixedExpressionNode) targetNode)._types[n - 2];
+			if (finalSuffixBaseType._kind == PMF)
+				throw new CompileException("The probabilities in a pmf cannot be modified", finalSuffix);
 			break;
 		}
 		default:
