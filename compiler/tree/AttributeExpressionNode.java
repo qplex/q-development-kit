@@ -32,6 +32,8 @@ public class AttributeExpressionNode extends QNode implements QParserTreeConstan
 			case REALMATRIX:
 			case BOOLEANMATRIX:
 			case PMFMATRIX:
+			case INTERFACEARRAY:
+			case INTERFACEMATRIX:
 				_type = QType.INT;
 				return;
 			default:
