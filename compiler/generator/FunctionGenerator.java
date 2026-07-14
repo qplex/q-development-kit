@@ -206,23 +206,27 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				String indexVariableName = statementNode.getChild(0).getToken(1).image;
 				int id = statementNode.jjtGetFirstToken().beginLine;
 
+				String minBoundVariableName = uniqueIndexVariableName("min" + id);
+				String maxBoundVariableName = uniqueIndexVariableName("max" + id);
+
 				_indentationManager.writeIndent();
-				new TemplateExpander.FromLine(_engine, "Int min@ID = @VALUE;") //
-						.substitute("@ID", id) //
+				new TemplateExpander.FromLine(_engine, "Int @MIN-VAR = @VALUE;") //
+						.substitute("@MIN-VAR", minBoundVariableName) //
 						.substitute("@VALUE", statementNode.getChild(0).getChild(0)) //
 						.run();
 
 				_indentationManager.writeIndent();
-				new TemplateExpander.FromLine(_engine, "Int max@ID = @VALUE;") //
-						.substitute("@ID", id) //
+				new TemplateExpander.FromLine(_engine, "Int @MAX-VAR = @VALUE;") //
+						.substitute("@MAX-VAR", maxBoundVariableName) //
 						.substitute("@VALUE", statementNode.getChild(0).getChild(1)) //
 						.run();
 
 				_indentationManager.writeIndent();
 				new TemplateExpander.FromLine(_engine,  //
-						"for (Int _@INDEX-VAR=min@ID; _@INDEX-VAR<=max@ID; _@INDEX-VAR++) {" //
+						"for (Int _@INDEX-VAR=@MIN-VAR; _@INDEX-VAR<=@MAX-VAR; _@INDEX-VAR++) {" //
 				) //
-						.substitute("@ID", id) //
+						.substitute("@MIN-VAR", minBoundVariableName) //
+						.substitute("@MAX-VAR", maxBoundVariableName) //
 						.substitute("@INDEX-VAR", indexVariableName) //
 						.run();
 
