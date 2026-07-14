@@ -34,7 +34,7 @@ public class Engine {
 
 		try {
 			_fis = new FileInputStream(filename);
-			QParser parser = new QParser(_fis);
+			QParser parser = new QParser(new java.io.InputStreamReader(_fis, java.nio.charset.StandardCharsets.UTF_8));
 			_root = (QNode) parser.run();
 			checkForNameConflict();
 

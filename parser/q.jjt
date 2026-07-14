@@ -6,6 +6,7 @@ options {
   NODE_FACTORY = "tree.NodeFactory";
   NODE_PACKAGE = "parser";
   STATIC = false;
+  UNICODE_INPUT = true;
 }
 
 PARSER_BEGIN(QParser)
