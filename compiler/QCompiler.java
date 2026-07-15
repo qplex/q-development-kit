@@ -2,6 +2,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 
+import analysis.AnalysisRunner;
 import compiler.Engine;
 import generator.Generator;
 
@@ -67,6 +68,9 @@ public class QCompiler {
 				Engine engine = new Engine(filename);
 				allEngines.add(engine);
 			}
+
+			for (Engine engine : allEngines)
+				AnalysisRunner.run(engine);
 
 			Generator.run(isLogActivated, modulename, allEngines);
 

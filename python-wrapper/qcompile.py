@@ -148,6 +148,9 @@ class QModule:
             print(stderr, end='')
             raise RuntimeError()
         else: 
+            stderr = java_result.stderr.decode()
+            if stderr:
+                print(stderr, end='', file=sys.stderr)
             stdout = java_result.stdout.decode()
             print(stdout.replace('File', 'C++ source'), end='')
 
