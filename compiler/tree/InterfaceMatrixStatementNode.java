@@ -22,8 +22,13 @@ public class InterfaceMatrixStatementNode extends QNode implements QParserTreeCo
 
 		Signature signature = new Signature();
 		signature._returnType = QType.getType((TypeNode) getNode(k + 1));
+		if (signature._returnType.hasConditionalQualifier())
+			throw new CompileException("Functions may not return conditional Pmfs", (QNode) getNode(k + 1));
 		for (int i = 0; i < parametersNode.jjtGetNumChildren(); i++) {
-			signature._parameterTypes.add(QType.getType((TypeNode) parametersNode.getChild(i).getChild(0)));
+			QType parameterType = QType.getType((TypeNode) parametersNode.getChild(i).getChild(0));
+			if (parameterType.hasConditionalQualifier())
+				throw new CompileException("Function parameters cannot be conditional Pmfs", (QNode) parametersNode.getChild(i).getChild(0));
+			signature._parameterTypes.add(parameterType);
 			signature._parameterNames.add(parametersNode.getChild(i).getToken(1).image);
 			signature._parameterNameTokens.add(parametersNode.getChild(i).getToken(1));
 		}

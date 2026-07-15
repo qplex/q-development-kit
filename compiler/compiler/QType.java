@@ -100,6 +100,17 @@ public class QType {
 	}
 
 	/**
+	 * Whether this type carries a conditional qualifier, such as Pmf{A|B}.
+	 * No expression can produce a value of such a type (conditional extraction
+	 * requires fixed values and yields an ordinary pmf).
+	 * 
+	 * @return Whether this type carries a conditional qualifier.
+	 */
+	public boolean hasConditionalQualifier() {
+		return _qualifier != null && _qualifier._category == Qualifier.Category.CONDITIONAL;
+	}
+
+	/**
 	 * Returns the QType associated with a type node in the parse tree.
 	 * 
 	 * @param node The type node whose qtype is to be produced.
