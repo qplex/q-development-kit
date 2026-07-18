@@ -14,23 +14,48 @@ public class MultiplicativeExpressionNode extends QNode implements QParserTreeCo
 		if (children == null)
 			return;
 
-		_type = QType.INT;
+		// Operators of equal precedence group from left to right, so this flat
+		// node stands for the left-nested tree (((a op b) op c) op d). Rather
+		// than building that tree, we simulate typing it bottom-up: the running
+		// kind below is always the type of the subexpression formed so far,
+		// exactly as if each operator were its own binary node. This makes the
+		// integer requirement of '%' position-sensitive: 'a % b / c' is legal
+		// (integer remainder, then real division) while 'a / b % c' is not
+		// ('a / b' is real).
+		int runningKind = kindOfOperand(getNode(0));
 
-		for (int i = 1; i < this.getTokenAndNodeCount(); i += 2)
-			if (getToken(i).kind == DIV)
-				_type = QType.REAL;
+		for (int operatorIndex = 1; operatorIndex < this.getTokenAndNodeCount(); operatorIndex += 2) {
+			QNode rightOperand = getNode(operatorIndex + 1);
+			int rightOperandKind = kindOfOperand(rightOperand);
 
-		for (int i = 0; i < jjtGetNumChildren(); i++) {
-			QType t = getChild(i)._type;
-			switch (t._kind) {
-			case INT:
+			switch (getToken(operatorIndex).kind) {
+			case DIV:
+				// A slash denotes real division, whatever the operands.
+				runningKind = REAL;
 				break;
-			case REAL:
-				_type = QType.REAL;
+			case MOD:
+				if (runningKind == REAL)
+					throw new CompileException("The left operand of '%' must be an integer", this);
+				if (rightOperandKind == REAL)
+					throw new CompileException("The right operand of '%' must be an integer", rightOperand);
 				break;
-			default:
-				throw new CompileException("Expected a number", getChild(i));
+			default: // MUL
+				if (rightOperandKind == REAL)
+					runningKind = REAL;
+				break;
 			}
+		}
+
+		_type = runningKind == REAL ? QType.REAL : QType.INT;
+	}
+
+	private int kindOfOperand(QNode operandNode) {
+		switch (operandNode._type._kind) {
+		case INT:
+		case REAL:
+			return operandNode._type._kind;
+		default:
+			throw new CompileException("Expected a number", operandNode);
 		}
 	}
 }

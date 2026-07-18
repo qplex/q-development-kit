@@ -169,6 +169,7 @@ TOKEN :
 | < LEQ: "<=" >
 | < LPAREN: "(" >
 | < LT: "<" >
+| < MOD: "%" >
 | < MUL: "*" >
 | < NEQ: "!=" >
 | < NOT: "!" >
@@ -567,7 +568,7 @@ void MultiplicativeExpression() #MultiplicativeExpression(>1) :
 {
   NegativeExpression()
   (
-    ( <MUL> | <DIV> ) NegativeExpression()
+    ( <MUL> | <DIV> | <MOD> ) NegativeExpression()
   )*
 }
 

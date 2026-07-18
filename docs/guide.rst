@@ -502,6 +502,19 @@ Q supports the usual arithmetic binary operators ``+``, ``–``, ``*``, ``/``
 as well as the negative unary operator ``-``. A slash ( ``/`` ) denotes
 real division, even when the operands are integers.
 
+The modulo operator ( ``%`` ) computes the remainder after integer
+division. It has the same precedence as ``*`` and ``/``, and operators
+of equal precedence are applied from left to right. Both operands of
+``%`` must be integers, where each operand is the expression built up so
+far on the left and the single subexpression on the right. For example,
+``a % b / c`` means ``(a % b) / c`` and is accepted when ``a``, ``b``,
+and ``c`` are integers, but ``a / b % c`` means ``(a / b) % c`` and is
+rejected because ``a / b`` is real. The result of ``%`` has the sign of
+the dividend, as in C++ and Java: ``-7 % 3`` is ``-1``. Note that this
+differs from Python, where ``%`` follows the sign of the divisor. A
+modulo by zero aborts the computation with a "Divide by zero" error,
+just like division.
+
 Q supports the logical operators ``&&`` and ``||`` and the “not” unary
 operator ``!``.
 

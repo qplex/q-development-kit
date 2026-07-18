@@ -113,6 +113,12 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 					if (token.kind == DIV) {
 						pw.print("checkDenominator(");
 						isDivision = true;
+					} else if (token.kind == MOD) {
+						// Guard against modulo by zero like division; the Int
+						// cast restores the integer type after the double-typed
+						// checkDenominator (exact for all Int values).
+						pw.print("(Int)checkDenominator(");
+						isDivision = true;
 					}
 				} else {
 					pw.print(generate(engine, node.getNode(i)));
