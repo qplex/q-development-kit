@@ -177,6 +177,11 @@ public void fB17() {
     BooleanArray booleanarray = createBooleanArray(3);
     PmfArray pmfarray = createPmfArray(3);
     PmfArray{?,?} jointpmfarray = createPmfArray(3);
+    intarray[1] = intarray[0];
+    realarray[1] = realarray[0];
+    booleanarray[1] = booleanarray[0];
+    pmfarray[1] = pmfarray[0];
+    jointpmfarray[1] = jointpmfarray[0];
 }
 
 // SECTION C - Functions and interfaces

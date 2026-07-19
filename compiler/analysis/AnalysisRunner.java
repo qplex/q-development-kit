@@ -20,8 +20,10 @@ public class AnalysisRunner {
 		String sourceName = engine._engineName + ".q";
 		for (String globalName : engine._symbolTable.globalNames()) {
 			Symbol globalSymbol = engine._symbolTable.get(globalName);
-			if (globalSymbol._type._kind == QType.FUNCTION_KIND)
+			if (globalSymbol._type._kind == QType.FUNCTION_KIND) {
 				UnusedSampleWarningPass.run(sourceName, globalSymbol);
+				UnusedVariableWarningPass.run(sourceName, globalSymbol);
+			}
 		}
 	}
 }
