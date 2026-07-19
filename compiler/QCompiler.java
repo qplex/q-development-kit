@@ -72,6 +72,7 @@ public class QCompiler {
 			for (Engine engine : allEngines)
 				AnalysisRunner.run(engine);
 
+			Generator.compilerVersionForGeneratedFileHeader = Version.VERSION;
 			Generator.run(isLogActivated, modulename, allEngines);
 
 			System.out.println("File " + modulename + ".cpp successfully created.");
