@@ -15,15 +15,15 @@ public:
     const char *message;
 };
 
-void abort(const char *_message) {
+[[noreturn]] void abort(const char *_message) {
     throw CException(_message);
 }
 
-void abortInternal() {
+[[noreturn]] void abortInternal() {
     abort("QPLEX internal error");
 }
 
-void abortImport() {
+[[noreturn]] void abortImport() {
     abort("Invalid value");
 }
 
@@ -330,6 +330,7 @@ SampleEnumerator::SampleEnumerator(Pmf *pmf) : isPrevious(false) {
             depth = pmf->joint.depth;
             break;
         case COMPOUND:
+        default:
             abortInternal();
     }
     
@@ -358,6 +359,7 @@ void SampleEnumerator::run() {
             marginal = records[level].pmf->joint.marginal;
             break;
         case COMPOUND:
+        default:
             abortInternal();
     }
     
@@ -678,6 +680,8 @@ Pmf *defaultPmf(QObject *obj, PmfConfig *pmfConfig) {
             }
             return pmf;
         }
+        default:
+            abortInternal();
     }
 }
 
@@ -1745,7 +1749,7 @@ class SampleEnumeratorFor_toPy : public SampleEnumerator {
 public:
     QObject *obj;
     PyObject *pyDict;
-    SampleEnumeratorFor_toPy(QObject *_obj, Pmf *pmf, PyObject *_pyDict) : obj(_obj), SampleEnumerator(pmf), pyDict(_pyDict) {}
+    SampleEnumeratorFor_toPy(QObject *_obj, Pmf *pmf, PyObject *_pyDict) : SampleEnumerator(pmf), obj(_obj), pyDict(_pyDict) {}
     void recordSample();
 };
 
@@ -1787,6 +1791,8 @@ PyObject *Pmf_toPy(QObject *obj, Pmf *pmf) {
             return pyTuple;
             break;
         }
+        default:
+            abortInternal();
     }
 }
 
@@ -1835,6 +1841,8 @@ Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
                 pmf->compound.elements[i] = Pmf_fromPy(obj, PyTuple_GET_ITEM(pyObj, i));
             return pmf;
         }
+        default:
+            abortInternal();
     }
 }
 PyObject *IntArray_toPy(QObject * obj, IntArray *a) {
