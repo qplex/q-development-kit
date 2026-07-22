@@ -1126,7 +1126,6 @@ beyond the block in which they were created.
 As a consequence of this rule, for-loops in Q cannot contain sampling statements. 
 We might add this capability later.
 
-**Rule 7**. Blocks must appear in function declarations, for-loops and
 if-else statements, and may not appear elsewhere.
 
 (illegal)
