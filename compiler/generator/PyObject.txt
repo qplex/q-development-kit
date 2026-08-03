@@ -2,6 +2,7 @@ typedef struct _@ENGINE_object {
     PyObject_HEAD
     bool isMemModified;
     MemHeader *memList;
+    Arena *arena;
     int functionCount;
     void **functionPointers;
     const char **functionNames;

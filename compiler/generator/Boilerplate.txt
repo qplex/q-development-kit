@@ -163,10 +163,40 @@ typedef struct {
 
 // Q OBJECT AND MEMORY ALLOCATION
 
+// Arena allocator.  A Q method call allocates many short-lived blocks and frees them
+// together in release(): blocks are bump-allocated from slabs, and a slab is reclaimed
+// only once it holds no surviving (flagged) block.
+// Before release(), blocks reachable from the engine's member variables (its state that
+// must survive the call) are flagged, so their slab stays pinned and its memory is never
+// reused, giving engine state the lifetime it requires.
+//
+// A new arena starts with a small slab (QARENA_SLAB_MIN) and doubles the default slab
+// payload toward QARENA_SLAB_MAX as it keeps allocating.  QARENA_SLAB_MAX caps only this
+// geometric growth of the default payload; it is NOT a maximum block or slab size: a
+// single allocation larger than the cap gets its own slab sized to fit it (see arenaAlloc).
+
+#define QARENA_SLAB_MIN ((size_t) 4 * 1024)        // payload of an arena's first slab
+#define QARENA_SLAB_MAX ((size_t) 4 * 1024 * 1024) // cap on geometric payload growth (not a block-size limit)
+
+typedef struct Slab {
+    struct Slab *next;
+    char *base;      // first usable byte
+    char *cursor;    // bump pointer; base <= cursor <= end.  cursor == base means empty
+    char *end;       // one past the last usable byte
+    int liveCount;   // surviving blocks currently held in this slab
+} Slab;
+
+typedef struct Arena {
+    Slab *slabs;                     // every slab owned by the object
+    Slab *active;                    // slab currently bumped into (NULL => pick or create one)
+    size_t nextPayload;              // payload for the next new slab (grows geometrically to the cap)
+} Arena;
+
 typedef struct {
     PyObject_HEAD
     bool isMemModified;
 	MemHeader *memList;
+	Arena *arena;
 	int functionCount;
 	void **functionPointers;
 	const char **functionNames;
@@ -175,51 +205,142 @@ typedef struct {
 	unsigned long long peakMemoryUse;
 } QObject;
 
+// Ensure 16-byte alignment
+static inline size_t qalign(size_t n) {
+    return (n + 15) & ~((size_t) 15);
+}
+
+Slab *newSlab(size_t payload) {
+    size_t headerSize = qalign(sizeof(Slab));
+    Slab *slab = (Slab *) malloc(headerSize + payload);
+    if (!slab)
+        abort("Out of memory");
+    slab->base = (char *) slab + headerSize;
+    slab->cursor = slab->base;
+    slab->end = slab->base + payload;
+    slab->liveCount = 0;
+    return slab;
+}
+
+Arena *ensureArena(QObject *obj) {
+    Arena *arena = obj->arena;
+    if (!arena) {
+        arena = (Arena *) calloc(1, sizeof(Arena));   // zero-inits slabs/active
+        if (!arena)
+            abort("Out of memory");
+        arena->nextPayload = QARENA_SLAB_MIN;
+        obj->arena = arena;
+    }
+    return arena;
+}
+
+void *arenaAlloc(QObject *obj, size_t size) {
+    Arena *arena = ensureArena(obj);
+
+    size_t need = qalign(size);
+    Slab *s = arena->active;
+    if (!s || (size_t)(s->end - s->cursor) < need) {
+        // reuse an empty slab large enough, else make a new one -- sized to the request
+        // but at least the geometrically growing default payload
+        s = NULL;
+        for (Slab *t = arena->slabs; t; t = t->next)
+            if (t->cursor == t->base && (size_t)(t->end - t->base) >= need) {
+                s = t;
+                break;
+            }
+        if (!s) {
+            size_t payload = need > arena->nextPayload ? need : arena->nextPayload;
+            s = newSlab(payload);
+            s->next = arena->slabs;
+            arena->slabs = s;
+            if (arena->nextPayload < QARENA_SLAB_MAX) {
+                arena->nextPayload *= 2;
+                if (arena->nextPayload > QARENA_SLAB_MAX)
+                    arena->nextPayload = QARENA_SLAB_MAX;
+            }
+        }
+        arena->active = s;
+    }
+
+    void *p = s->cursor;
+    s->cursor += need;
+    return p;
+}
+
+Slab *slabOf(Arena *arena, void *p) {
+    for (Slab *s = arena->slabs; s; s = s->next)
+        if ((char *) p >= s->base && (char *) p < s->end)
+            return s;
+    abortInternal();
+}
+
 void *qmalloc(QObject *obj, size_t size) {
     obj->isMemModified = true;
 	obj->currentMemoryUse += size;
 	if (obj->currentMemoryUse > obj->peakMemoryUse)
 	    obj->peakMemoryUse = obj->currentMemoryUse;
 
-    MemHeader *ptr = (MemHeader *) malloc(size);
-	if (!ptr)
-	    abort("Out of memory");
-
+    MemHeader *ptr = (MemHeader *) arenaAlloc(obj, size);
     memset(ptr, 0, size);
-    
-    MemHeader *memHeader = (MemHeader *) ptr;
-    memHeader->next = obj->memList;
-    obj->memList = memHeader;
-    
+
+    ptr->next = obj->memList;
+    obj->memList = ptr;
+
     ptr->size = size;
     return ptr;
 }
 
 void release(QObject *obj) {
+    Arena *arena = obj->arena;
+    if (!arena) {
+        obj->isMemModified = false;
+        return;
+    }
+
+    for (Slab *s = arena->slabs; s; s = s->next)
+        s->liveCount = 0;
+
+    // Sweep: keep flagged (surviving) blocks, tallying which slab pins them; blocks
+    // that are not flagged simply die; their memory is reclaimed with their slab.
     MemHeader *p = obj->memList;
-    obj->memList = NULL;
-    
+    MemHeader *survivors = NULL;
     while (p) {
         MemHeader *next = p->next;
-        
         if (p->flag) {
             p->flag = false;
-            MemHeader *memHeader = (MemHeader *) p;
-            memHeader->next = obj->memList;
-            obj->memList = memHeader;
+            p->next = survivors;
+            survivors = p;
+            slabOf(arena, p)->liveCount++;
         } else {
             obj->currentMemoryUse -= p->size;
-            free(p);
         }
-        
         p = next;
-     }
-            
-     obj->isMemModified = false;
+    }
+    obj->memList = survivors;
+
+    // A slab with no survivors is reset to empty and may be reused; a slab that still
+    // holds a survivor stays pinned and is not bumped into again until it empties.
+    for (Slab *s = arena->slabs; s; s = s->next)
+        if (s->liveCount == 0)
+            s->cursor = s->base;
+    arena->active = NULL;
+
+    obj->isMemModified = false;
 }
 
 void dealloc(QObject *obj) {
     release(obj);
+    Arena *arena = obj->arena;
+    if (arena) {
+        Slab *s = arena->slabs;
+        while (s) {
+            Slab *next = s->next;
+            free(s);
+            s = next;
+        }
+        free(arena);
+        obj->arena = NULL;
+    }
     Py_TYPE(obj)->tp_free((PyObject *) obj);
 }
 

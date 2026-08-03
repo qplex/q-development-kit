@@ -7,6 +7,7 @@ PyObject *_@ENGINE_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
 
     self->isMemModified = false;
     self->memList = NULL;
+    self->arena = NULL;
     self->functionCount = _@ENGINE_IMPLEMENTATION_COUNT;
     self->functionPointers = _@ENGINE_functionPointers;
     self->functionNames = _@ENGINE_functionNames;
