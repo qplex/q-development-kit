@@ -370,7 +370,10 @@ void SampleEnumerator::run() {
             continue;
         records[level].value = i + marginal->simple.offset;
         records[level].probability = records[level-1].probability * branchProbability;
-        records[level].pmf = records[level-1].pmf->joint.elements[i];
+        if (records[level-1].pmf->pmfType == JOINT)
+            records[level].pmf = records[level-1].pmf->joint.elements[i];
+        else
+            records[level].pmf = NULL;   // leaf; never read
         run();
     }
     level--;
