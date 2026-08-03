@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <algorithm>
+#include <new>
 #include "structmember.h"
 
 // EXCEPTIONS
@@ -163,6 +164,14 @@ typedef struct {
 
 // Q OBJECT AND MEMORY ALLOCATION
 
+// A Q object serves its short-lived, per-call memory from two independent allocators,
+// both owned by the object's Arena (below):
+//   * a slab bump-arena (qmalloc) for the Q values a call produces, such as pmfs, arrays,
+//     and matrices.  These are tracked in memList and, while still reachable from engine
+//     state, kept alive across calls by the flag/release scheme.
+//   * a size-classed free-list pool (poolAlloc) for accumulator scratch buffers.  These
+//     are transient and never a result, so they stay out of the slab arena.
+
 // Arena allocator.  A Q method call allocates many short-lived blocks and frees them
 // together in release(): blocks are bump-allocated from slabs, and a slab is reclaimed
 // only once it holds no surviving (flagged) block.
@@ -178,6 +187,12 @@ typedef struct {
 #define QARENA_SLAB_MIN ((size_t) 4 * 1024)        // payload of an arena's first slab
 #define QARENA_SLAB_MAX ((size_t) 4 * 1024 * 1024) // cap on geometric payload growth (not a block-size limit)
 
+// Accumulator scratch buffers (SimpleAccumulator's Real[] and JointAccumulator's
+// Accumulator*[]) are churned hard, so freed ones are recycled here by power-of-two size class
+// (8B = 2^3 up to 2^(QPOOL_CLASSES-1)). Not counted in currentMemoryUse (scratch); the pool is freed at dealloc.
+
+#define QPOOL_CLASSES 40
+
 typedef struct Slab {
     struct Slab *next;
     char *base;      // first usable byte
@@ -190,6 +205,7 @@ typedef struct Arena {
     Slab *slabs;                     // every slab owned by the object
     Slab *active;                    // slab currently bumped into (NULL => pick or create one)
     size_t nextPayload;              // payload for the next new slab (grows geometrically to the cap)
+    void *bufferPool[QPOOL_CLASSES]; // recycled accumulator scratch buffers, by size class
 } Arena;
 
 typedef struct {
@@ -225,7 +241,7 @@ Slab *newSlab(size_t payload) {
 Arena *ensureArena(QObject *obj) {
     Arena *arena = obj->arena;
     if (!arena) {
-        arena = (Arena *) calloc(1, sizeof(Arena));   // zero-inits slabs/active
+        arena = (Arena *) calloc(1, sizeof(Arena));   // zero-inits slabs/active/bufferPool
         if (!arena)
             abort("Out of memory");
         arena->nextPayload = QARENA_SLAB_MIN;
@@ -272,6 +288,49 @@ Slab *slabOf(Arena *arena, void *p) {
         if ((char *) p >= s->base && (char *) p < s->end)
             return s;
     abortInternal();
+}
+
+// Size class for a buffer of `bytes`: the smallest c with 2^c >= bytes, floored at 3 so
+// every pooled buffer is >= 8 bytes, leaving room to thread the free list through its
+// first word.
+int poolClass(size_t bytes) {
+    int c = 3;                 // floor: 8 bytes (room for the free-list link)
+    size_t size = 8;
+    while (size < bytes) {
+        size <<= 1;
+        c++;
+    }
+    return c;
+}
+
+// Hand out a scratch buffer of at least `bytes`, recycled from the pool if its class has a
+// free one (its first word is the free-list link) else freshly malloc'd.  Contents are
+// garbage; the caller initializes what it uses.
+void *poolAlloc(QObject *obj, size_t bytes) {
+    Arena *arena = ensureArena(obj);
+    int c = poolClass(bytes);
+    void *head = arena->bufferPool[c];
+    if (head) {
+        // Pop the head: its first word holds the link to the next free block, so make
+        // that the new head before returning this one.
+        arena->bufferPool[c] = *(void **) head;
+        return head;
+    }
+    void *p = malloc((size_t) 1 << c);
+    if (!p)
+        abort("Out of memory");
+    return p;
+}
+
+// Return a scratch buffer to its size-class free list for reuse (really freed only at
+// dealloc).  `bytes` must match the logical size passed to the poolAlloc that made it.
+void poolFree(QObject *obj, size_t bytes, void *buffer) {
+    Arena *arena = obj->arena;
+    int c = poolClass(bytes);
+    // Push onto the free list: write the current head into this block's first word,
+    // then make this block the new head.
+    *(void **) buffer = arena->bufferPool[c];
+    arena->bufferPool[c] = buffer;
 }
 
 void *qmalloc(QObject *obj, size_t size) {
@@ -337,6 +396,14 @@ void dealloc(QObject *obj) {
             Slab *next = s->next;
             free(s);
             s = next;
+        }
+        for (int c = 0; c < QPOOL_CLASSES; c++) {
+            void *b = arena->bufferPool[c];
+            while (b) {
+                void *next = *(void **) b;
+                free(b);
+                b = next;
+            }
         }
         free(arena);
         obj->arena = NULL;
@@ -1137,7 +1204,7 @@ public:
 
 SimpleAccumulator::~SimpleAccumulator() {
     if (elements)
-        free(elements);
+        poolFree(obj, length * sizeof(Real), elements);
 }
 
 // Bottleneck for execution speed.  Minimize ifs when range does not change.
@@ -1150,46 +1217,38 @@ SimpleAccumulator *SimpleAccumulator::putSingle(Real probability, Int value) {
     if (value < offset) {
         if (value < 0)
             abort("Negative integer in pmf support");
-    
-        if (length == 0) {
-            elements = (Real *) malloc(sizeof(Real));
-            elements[0] = probability;
-            offset = value;
-            length = 1;
-            return this;
-        }
-        
+
         int newLength = 2 * (offset + length - value);
         int newOffset = std::max(offset + length - newLength, 0);
-        Real *newElements = (Real *) malloc(newLength * sizeof(Real));
+        Real *newElements = (Real *) poolAlloc(obj, newLength * sizeof(Real));
         memset(newElements, 0, newLength * sizeof(Real));
         memcpy(
                &newElements[offset - newOffset],
                elements,
                length * sizeof(Real)
         );
-        free(elements);
+        poolFree(obj, length * sizeof(Real), elements);
         elements = newElements;
         offset = newOffset;
         length = newLength;
     } else if (value >= offset + length) {
         if (length == 0) {
-            elements = (Real *) malloc(sizeof(Real));
+            elements = (Real *) poolAlloc(obj, sizeof(Real));
             elements[0] = probability;
             offset = value;
             length = 1;
             return this;
         }
-        
+
         int newLength = 2 * (1 + value - offset);
-        Real *newElements = (Real *) malloc(newLength * sizeof(Real));
+        Real *newElements = (Real *) poolAlloc(obj, newLength * sizeof(Real));
         memset(newElements, 0, newLength * sizeof(Real));
         memcpy(
                newElements,
                elements,
                length * sizeof(Real)
         );
-        free(elements);
+        poolFree(obj, length * sizeof(Real), elements);
         elements = newElements;
         length = newLength;
     }
@@ -1253,9 +1312,20 @@ public:
 
 JointAccumulator::~JointAccumulator() {
     if (elements) {
-        for (int i = 0; i<length; i++)
-            delete elements[i];   // NULL slots are fine: delete NULL is a no-op
-        free(elements);
+        // Children are pool-allocated by newChild(); depth determines their exact type.
+        for (int i = 0; i<length; i++) {
+            Accumulator *child = elements[i];
+            if (!child)
+                continue;
+            if (depth > 2) {
+                ((JointAccumulator *) child)->~JointAccumulator();
+                poolFree(obj, sizeof(JointAccumulator), child);
+            } else {
+                ((SimpleAccumulator *) child)->~SimpleAccumulator();
+                poolFree(obj, sizeof(SimpleAccumulator), child);
+            }
+        }
+        poolFree(obj, length * sizeof(Accumulator *), elements);
     }
 }
 
@@ -1263,8 +1333,8 @@ JointAccumulator::~JointAccumulator() {
 // and a child is allocated the first time a sample is actually routed to it.
 Accumulator *JointAccumulator::newChild() {
     return depth > 2
-        ? (Accumulator *) new JointAccumulator(obj, depth-1)
-        : (Accumulator *) new SimpleAccumulator(obj);
+        ? (Accumulator *) new (poolAlloc(obj, sizeof(JointAccumulator))) JointAccumulator(obj, depth-1)
+        : (Accumulator *) new (poolAlloc(obj, sizeof(SimpleAccumulator))) SimpleAccumulator(obj);
 }
 
 Accumulator *JointAccumulator::childSlot(Int value) {
@@ -1316,10 +1386,10 @@ void JointAccumulator::ensureSlot(Int value) {
 
         int newLength = 2 * (offset + length - value);
         int newOffset = std::max(offset + length - newLength, 0);
-        Accumulator **newElements = (Accumulator **) malloc(newLength * sizeof(Accumulator *));
+        Accumulator **newElements = (Accumulator **) poolAlloc(obj, newLength * sizeof(Accumulator *));
         memset(newElements, 0, newLength * sizeof(Accumulator *));
         memcpy(&newElements[offset - newOffset], elements, length * sizeof(Accumulator *));
-        free(elements);
+        poolFree(obj, length * sizeof(Accumulator *), elements);
         elements = newElements;
         offset = newOffset;
         length = newLength;
@@ -1327,17 +1397,17 @@ void JointAccumulator::ensureSlot(Int value) {
         if (length == 0) {
             offset = value;
             length = 1;
-            elements = (Accumulator **) malloc(sizeof(Accumulator *));
+            elements = (Accumulator **) poolAlloc(obj, sizeof(Accumulator *));
             elements[0] = NULL;
             return;
         }
 
         int newLength = 2 * (value + 1 - offset);
         int oldLength = length;
-        Accumulator **newElements = (Accumulator **) malloc(newLength * sizeof(Accumulator *));
+        Accumulator **newElements = (Accumulator **) poolAlloc(obj, newLength * sizeof(Accumulator *));
         memcpy(newElements, elements, oldLength * sizeof(Accumulator *));
         memset(&newElements[oldLength], 0, (newLength - oldLength) * sizeof(Accumulator *));
-        free(elements);
+        poolFree(obj, oldLength * sizeof(Accumulator *), elements);
         elements = newElements;
         length = newLength;
     }
