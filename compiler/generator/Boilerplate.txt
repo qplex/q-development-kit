@@ -1276,9 +1276,9 @@ Pmf *SimpleAccumulator::toPmf() {
     
     int minValue = offset;
     int maxValue = offset + length - 1;
-    while (elements[minValue - offset] == 0 && minValue <= maxValue)
+    while (minValue <= maxValue && elements[minValue - offset] == 0)
         minValue++;
-    while (elements[maxValue - offset] == 0 && maxValue >= minValue)
+    while (maxValue >= minValue && elements[maxValue - offset] == 0)
         maxValue--;
         
     if (maxValue < minValue)
@@ -1467,9 +1467,9 @@ Pmf *JointAccumulator::toPmf() {
    
     int minValue = offset;
     int maxValue = offset + length - 1;
-    while (isEmptySlot(minValue - offset) && minValue <= maxValue)
+    while (minValue <= maxValue && isEmptySlot(minValue - offset))
         minValue++;
-    while (isEmptySlot(maxValue - offset) && maxValue >= minValue)
+    while (maxValue >= minValue && isEmptySlot(maxValue - offset))
         maxValue--;
 
     if (maxValue < minValue)
