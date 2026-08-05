@@ -1,7 +1,11 @@
-static PyObject *_q_module_self = NULL;
-
+// QDK modules are read-only (attributes belong on engine instances, not the
+// module).  This guard overrides the shared module type's setattro, so it must
+// identify a QDK module by the private __qdk_module__ marker every one installs
+// -- that way it protects every QDK module in the process, not just whichever
+// one's PyInit last claimed the shared slot.
 static int _q_module_setattro(PyObject *self, PyObject *attr_name, PyObject *value) {
-    if (self == _q_module_self) {
+    PyObject *dict = PyModule_GetDict(self);
+    if (dict != NULL && PyDict_GetItemString(dict, "__qdk_module__") != NULL) {
         PyErr_SetString(PyExc_AttributeError,
             "module does not support setting attributes; "
             "assign them to an engine instance instead");
@@ -36,7 +40,13 @@ PyMODINIT_FUNC PyInit_@MODULE-NAME(void) {
         return NULL;
     }
 
-    _q_module_self = m;
+    // Mark this as a QDK module so the read-only guard above recognizes it.
+    Py_INCREF(Py_True);
+    if (PyModule_AddObject(m, "__qdk_module__", Py_True) < 0) {
+        Py_DECREF(Py_True);
+        Py_DECREF(m);
+        return NULL;
+    }
     Py_TYPE(m)->tp_setattro = _q_module_setattro;
     return m;
 }
