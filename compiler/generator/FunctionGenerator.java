@@ -305,7 +305,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 						Generator._cSourceWriter.print(" <- \", ");
 					}
 					Generator._cSourceWriter
-							.print(ExpressionGenerator.generate(_engine, statementNode.getNode(3)));
+							.print(ExpressionGenerator.confirmCompound(type, statementNode.getNode(3),
+									ExpressionGenerator.generate(_engine, statementNode.getNode(3))));
 					if (Generator._logActivated) {
 						Generator._cSourceWriter.print(")");
 					}
@@ -450,9 +451,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					}
 				} else {
 					category = "Compound";
-					confirmParams = "," + qualifier._compoundRVNames.size();
-					for (int j=0; j<qualifier._compoundRVNames.size(); j++)
-						confirmParams += "," + qualifier._compoundRVNames.get(j).size();
+					confirmParams = qualifier.compoundConfirmParams();
 				}
 				
 				String qname = qtype._qName;
@@ -476,6 +475,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				.substitute("@NAME", symbol._name) //
 				.substitute("@NUM_PARAMS", String.valueOf(n)) //
 				.substitute("@RETURN_TYPE", symbol._signature._returnType._xName) //
+				.substitute("@RETURN_CONVERT", returnConverter(symbol._signature._returnType)) //
 				.substitute("@ALL_ARGS", allArgs);
 
 		for (int i = 0; i < n; i++) {
@@ -485,10 +485,34 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					repeat() //
 					.substitute("@CTYPE", argType._cName) //
 					.substitute("@XTYPE", argType._xName) //
+					.substitute("@ARG_CONVERT", argConverter(argType)) //
 					.substitute("@INDEX", index);
 		}
 
 		t.run();
+	}
+
+	/**
+	 * The C function that converts an inbound Python value (a function argument
+	 * or a public-variable write) into a C value. A data-object type is
+	 * copied into the engine whether the source is a Q data object or a
+	 * dict/list/tuple; every other type keeps the plain {@code _fromPy} rebuild.
+	 */
+	private static String argConverter(QType type) {
+		if (type.isDataObject())
+			return type._xName + "_in";
+		return type._xName + "_fromPy";
+	}
+
+	/**
+	 * The C function that converts this return type's C value into the Python
+	 * result. A data-object type comes back as a fresh object; every
+	 * other type keeps the plain {@code _toPy} conversion.
+	 */
+	private static String returnConverter(QType type) {
+		if (type.isDataObject())
+			return type._xName + "_out";
+		return type._xName + "_toPy";
 	}
 
 	void writeSamplingLoop(QNode statementNode, String sampleVariableName, String distributionVariableName,
@@ -580,11 +604,13 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 		case NONE:
 			if (_returnType != QType.VOID) {
 				_indentationManager.writeIndent();
+				String returnValue = ExpressionGenerator.confirmCompound(_returnType, statementNode.getChild(0),
+						ExpressionGenerator.generate(_engine, statementNode.getChild(0)));
 				new TemplateExpander.FromLine(_engine, //
 						"@TYPE returnValue = @VALUE;" //
 				) //
 						.substitute("@TYPE", _returnType._cName) //
-						.substitute("@VALUE", statementNode.getChild(0)) //
+						.substitute("@VALUE", returnValue) //
 						.run();
 				if (Generator._logActivated) {
 					_indentationManager.writeIndent();
@@ -968,10 +994,13 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				lhs = "_" + targetVariableName;
 
 			_indentationManager.writeIndent();
+			String rhs = ExpressionGenerator.confirmCompound(statementNode.getChild(0)._type,
+					statementNode.getChild(1),
+					ExpressionGenerator.generate(_engine, statementNode.getChild(1)));
 			new TemplateExpander.FromLine(_engine, "@LHS = @LOG(\"@PADDED_LINE_NUMBER@LHS <- \"@,@RHS@);") //
 					.substitute("@PADDED_LINE_NUMBER", Generator.bracketedPaddedLineNumber(statementNode))
 					.substitute("@LHS", lhs) //
-					.substitute("@RHS", statementNode.getChild(1)) //
+					.substitute("@RHS", rhs) //
 					.run();
 			return;
 		}

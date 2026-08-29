@@ -7,6 +7,8 @@
 	<target name="init" depends="clean">
 		<!-- Build fails if version.txt contains a line feed. -->
 		<loadfile property="version" srcFile="version.txt"/>
+		<!-- Build fails if q_abi_version.txt contains a line feed. -->
+		<loadfile property="abi" srcFile="q_abi_version.txt"/>
 
 		<mkdir dir="build"/>
 		<mkdir dir="build/tools"/>
@@ -91,6 +93,16 @@
 			<arg value="${version}"/>
 		</java>
 
+		<java classname="ReplaceInTextFile">
+			<classpath>
+				<pathelement location="build/tools"/>
+			</classpath>
+
+			<arg value="build/compiler/generator/Boilerplate.txt"/>
+			<arg value="@Q_ABI@"/>
+			<arg value="${abi}"/>
+		</java>
+
 		<copy todir="build/compiler/parser">
 			<fileset dir="build/parser">
 				<include name="*.java"/>
@@ -140,7 +152,7 @@
 		<unzip src="build/QDK-${version}.zip" dest="build/test"/>
 
 		<exec dir="build/test" executable="python3" failonerror="true">
-			<arg line="qcompile.py testengine TestEngine.q"/>
+			<arg line="qcompile.py test_module TestEngine.q"/>
 		</exec>
 
 		<exec dir="build/test" executable="python3" failonerror="true">

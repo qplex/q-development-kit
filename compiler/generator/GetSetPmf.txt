@@ -1,6 +1,6 @@
 PyObject *_@Q_get_@NAME(_@Q_object *self, PyObject *args) { 
     try {
-        return @TYPE_toPy((QObject *) self, @LOG("Py    GET @NAME -> "@,self->_@NAME@));
+        return @GET_CONVERT((QObject *) self, @LOG("Py    GET @NAME -> "@,self->_@NAME@));
     } catch(CException x) {
         PyErr_SetString(PException, x.message);
         return NULL;
@@ -9,7 +9,7 @@ PyObject *_@Q_get_@NAME(_@Q_object *self, PyObject *args) {
 
 int _@Q_set_@NAME(_@Q_object *self, PyObject *arg) { 
     try {
-        @VALUETYPE value = @TYPE_fromPy((QObject *) self, arg);			
+        @VALUETYPE value = @SET_CONVERT((QObject *) self, arg);
         @CONFIRM;
         @LOG("Py    SET @NAME <- "@,self->_@NAME = value@); 
        if (self->isMemModified)

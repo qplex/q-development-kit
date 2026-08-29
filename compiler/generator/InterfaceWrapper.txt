@@ -4,8 +4,8 @@ PyObject *_@OBJ_@NAME_Py(PyObject *pyObj, PyObject *args) {
   	    if (PyTuple_Size(args) != @NUM_PARAMS)
             throw CException("Expected @NUM_PARAMS parameter(s)");
         @IF-LOG(pushLineNumber("Py    ");
-        @)@REPEAT(@CTYPE arg@INDEX = @XTYPE_fromPy((QObject *) self, PyTuple_GET_ITEM(args, @INDEX));
-        @)PyObject *returnValue = @RETURN_TYPE_toPy((QObject *) self, self->_@NAME(self@ALL_ARGS));
+        @)@REPEAT(@CTYPE arg@INDEX = @ARG_CONVERT((QObject *) self, PyTuple_GET_ITEM(args, @INDEX));
+        @)PyObject *returnValue = @RETURN_CONVERT((QObject *) self, self->_@NAME(self@ALL_ARGS));
  		if (self->isMemModified)
  		    _@OBJ_memRelease(self);
  	    return returnValue;

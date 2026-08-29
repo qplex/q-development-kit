@@ -258,6 +258,29 @@ public class QType {
 	}
 
 	/**
+	 * Reports whether this QType is a data object (a pmf, or one of the eight
+	 * array/matrix types)
+	 *
+	 * @return true if this QType is one of the nine data-object types. False otherwise.
+	 */
+	public boolean isDataObject() {
+		switch (_kind) {
+		case QParserConstants.PMF:
+		case QParserConstants.PMFARRAY:
+		case QParserConstants.PMFMATRIX:
+		case QParserConstants.INTARRAY:
+		case QParserConstants.REALARRAY:
+		case QParserConstants.BOOLEANARRAY:
+		case QParserConstants.INTMATRIX:
+		case QParserConstants.REALMATRIX:
+		case QParserConstants.BOOLEANMATRIX:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	/**
 	 * Reports whether this QType can be typecast.
 	 * 
 	 * @param t The new type to be cast to.

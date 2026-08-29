@@ -105,28 +105,32 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 		case JJTNOTEXPRESSION:
 		case JJTRELATIONALEXPRESSION:
 		case JJTEQUALITYEXPRESSION: {
-			boolean isDivision = false;
-			for (int i = 0; i < node.getTokenAndNodeCount(); i++)
+			// Left-associative fold over this expression. Operators emit infix,
+			// except division (guards the divisor with checkDenominator) and
+			// modulo (routes through intMod so the result is identical under any
+			// compiler/-std and INT_MIN % -1 is handled). Unary prefixes (-, !)
+			// arrive as a leading node or token and simply concatenate.
+			String acc = null;
+			Token op = null;
+			for (int i = 0; i < node.getTokenAndNodeCount(); i++) {
 				if (node.isToken(i)) {
-					Token token = node.getToken(i);
-					pw.print(token.image);
-					if (token.kind == DIV) {
-						pw.print("checkDenominator(");
-						isDivision = true;
-					} else if (token.kind == MOD) {
-						// Guard against modulo by zero like division; the Int
-						// cast restores the integer type after the double-typed
-						// checkDenominator (exact for all Int values).
-						pw.print("(Int)checkDenominator(");
-						isDivision = true;
-					}
+					op = node.getToken(i);
 				} else {
-					pw.print(generate(engine, node.getNode(i)));
-					if (isDivision) {
-						pw.print(")");
-						isDivision = false;
-					}
+					String operand = generate(engine, node.getNode(i));
+					if (acc == null)
+						acc = (op == null) ? operand : op.image + operand;
+					else if (op == null)
+						acc = acc + operand;
+					else if (op.kind == MOD)
+						acc = "intMod(" + acc + ", " + operand + ")";
+					else if (op.kind == DIV)
+						acc = acc + "/checkDenominator(" + operand + ")";
+					else
+						acc = acc + op.image + operand;
+					op = null;
 				}
+			}
+			pw.print(acc);
 			return sw.toString();
 		}
 
@@ -505,6 +509,21 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			assert false;
 			return null;
 		}
+	}
+
+	/**
+	 * Wraps a compound-pmf value in the {@code confirmCompound...} guard to have
+	 * overlapping components checked for agreement. Only an inline initializer
+	 * literal is wrapped: a compound already held in a variable, parameter or
+	 * return value was checked where it was created, and pmfs are immutable, so
+	 * rechecking it would be wasted work. Anything else passes through unchanged.
+	 */
+	static String confirmCompound(QType targetType, QNode source, String value) {
+		Qualifier q = targetType._qualifier;
+		boolean isLiteral = source.getId() == JJTPMFINITIALIZER || source.getId() == JJTARRAYINITIALIZER;
+		if (isLiteral && q != null && q._category == Qualifier.Category.COMPOUND)
+			return "confirmCompound" + targetType._xName + "(" + value + q.compoundConfirmParams() + ")";
+		return value;
 	}
 
 	/** Generate CPP code for a {@link compiler.Qualifier}. */

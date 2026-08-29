@@ -70,6 +70,10 @@ public class Generator implements QParserConstants {
 						.run();
 			}
 
+			// Concrete data-object type definitions (arrays and matrices) follow the fixed
+			// Boilerplate helpers and precede the engines that hand these objects across the boundary.
+			generateDataObjects();
+
 			// QObjects
 			for (int i = 0; i < allEngines.size(); i++)
 				generateQObject(modulename, allEngines.get(i));
@@ -204,14 +208,20 @@ public class Generator implements QParserConstants {
 				case BOOLEANARRAY:
 				case INTMATRIX:
 				case REALMATRIX:
-				case BOOLEANMATRIX:
+				case BOOLEANMATRIX: {
+					// Scalars keep the plain conversion; the array and matrix types
+					// read/write as Q data objects (copied out and in).
+					boolean isObject = type.isDataObject();
+					String getConverter = isObject ? type._xName + "_out" : type._xName + "_toPy";
+					String setConverter = isObject ? type._xName + "_in" : type._xName + "_fromPy";
 					new TemplateExpander.FromFile("GetSet.txt") //
 							.substitute("@Q", engineName) //
 							.substitute("@NAME", name) //
-							.substitute("@TYPE", type._xName) //
-							.substitute("@VALUETYPE", type._cName) //
+							.substitute("@GET_CONVERT", getConverter) //
+							.substitute("@SET_CONVERT", setConverter) //
 							.run();
 					break;
+				}
 
 				case PMF:
 				case PMFARRAY:
@@ -236,25 +246,28 @@ public class Generator implements QParserConstants {
 						break;
 					}
 					case COMPOUND: {
-						int n = qualifier._compoundRVNames.size();
 						b.append("Compound");
 						b.append(type._xName);
-						b.append("(value,");
-						b.append(n);
-						for (int i = 0; i < n; i++) {
-							b.append(",");
-							b.append(qualifier._compoundRVNames.get(i).size());
-						}
+						b.append("(value");
+						b.append(qualifier.compoundConfirmParams());
 						break;
 					}
 					}
 
 					b.append(")");
 
+					// All three pmf-shaped globals read back as Q data objects and
+					// accept an object (or a plain dict/list) on assignment, copied
+					// into the engine's own pool.
+					String getConverter = type._xName + "_out";
+					String setConverter = type._xName + "_in";
+
 					new TemplateExpander.FromFile("GetSetPmf.txt") //
 							.substitute("@Q", engineName) //
 							.substitute("@NAME", name) //
 							.substitute("@TYPE", type._xName) //
+							.substitute("@GET_CONVERT", getConverter) //
+							.substitute("@SET_CONVERT", setConverter) //
 							.substitute("@VALUETYPE", type._cName) //
 							.substitute("@CONFIRM", b.toString()).run();
 					break;
@@ -583,6 +596,122 @@ public class Generator implements QParserConstants {
 		}
 	}
 
+	/**
+	 * Emits the concrete data-object type definitions: the eight array and matrix
+	 * containers. The generic C++ helpers they build on stay fixed in
+	 * Boilerplate.txt; only the per-type definitions are generated here, in the
+	 * same style engines are emitted.
+	 */
+	private static void generateDataObjects() {
+		generateArrayObject(QType.INTARRAY);
+		generateArrayObject(QType.REALARRAY);
+		generateArrayObject(QType.BOOLEANARRAY);
+
+		_cSourceWriter.println("// A matrix hands out its rows as row-object views: m[i] is an int_array (etc.)");
+		_cSourceWriter.println("// borrowing row i in place and pinning the matrix, not a copy of the row.");
+		_cSourceWriter.println();
+		generateArrayObject(QType.INTMATRIX);
+		generateArrayObject(QType.REALMATRIX);
+		generateArrayObject(QType.BOOLEANMATRIX);
+
+		_cSourceWriter.println("// The pmf containers hand out views too: pmf_array[i] is a pmf borrowing element");
+		_cSourceWriter.println("// i, and pmf_matrix[i] is a pmf_array borrowing row i, each pinning its parent.");
+		_cSourceWriter.println();
+		generateArrayObject(QType.PMFARRAY);
+		generateArrayObject(QType.PMFMATRIX);
+	}
+
+	/**
+	 * Emits one array or matrix container type from ArrayObject.txt: its
+	 * ArrayDataObjectTraits specialization, mapping and method tables, PyTypeObject
+	 * and thin in/out (and, for the array shapes handed out as element views, view)
+	 * boundary functions.
+	 */
+	private static void generateArrayObject(QType type) {
+		String v = type._qName;              // IntArray, PmfMatrix, ... (the C++ value type)
+		String stem = v + "DataObject";      // IntArrayDataObject, ...
+		String pyName = toPythonName(v);     // int_array, pmf_matrix, ...
+
+		String arrayMethod;
+		String getset;
+		boolean hasView;
+		switch (type._kind) {
+		case PMFARRAY:
+			arrayMethod = "PmfDataObject_array";
+			getset = "PmfArrayDataObject_getset";
+			hasView = true;
+			break;
+		case PMFMATRIX:
+			arrayMethod = "PmfDataObject_array";
+			getset = "PmfMatrixDataObject_getset";
+			hasView = false;
+			break;
+		case INTARRAY:
+		case REALARRAY:
+		case BOOLEANARRAY:
+			arrayMethod = "ArrayDataObject_array<" + v + ">";
+			getset = "0";
+			hasView = true;
+			break;
+		case INTMATRIX:
+		case REALMATRIX:
+		case BOOLEANMATRIX:
+			arrayMethod = "ArrayDataObject_array<" + v + ">";
+			getset = "0";
+			hasView = false;
+			break;
+		default:
+			assert (false);
+			return;
+		}
+
+		new TemplateExpander.FromFile("ArrayObject.txt") //
+				.substitute("@PYNAME", pyName) //
+				.substitute("@STEM", stem) //
+				.substitute("@ELEMENT", arrayElementExpr(type)) //
+				.substitute("@ARRAY_METHOD", arrayMethod) //
+				.substitute("@GETSET", getset) //
+				.substitute("@V", v) //
+				.run();
+
+		// Only the array shapes are handed out as element views (matrix rows and
+		// pmf-container elements); the matrix shapes need no view function.
+		if (hasView)
+			new TemplateExpander.FromLine(
+					"PyObject *@V_view(PyObject *owner, @V *v) { return ArrayDataObject_view<@V>(&@STEM_Type, owner, v); }") //
+							.substitute("@STEM", stem) //
+							.substitute("@V", v) //
+							.run();
+
+		_cSourceWriter.println();
+	}
+
+	/** The element accessor body for an array or matrix type: a plain scalar for a
+	 *  scalar array, or a fresh borrowing view for a matrix row or pmf element. */
+	private static String arrayElementExpr(QType type) {
+		switch (type._kind) {
+		case INTARRAY:
+			return "Int_toPy(o, v->elements[i])";
+		case REALARRAY:
+			return "Real_toPy(o, v->elements[i])";
+		case BOOLEANARRAY:
+			return "Boolean_toPy(o, v->elements[i])";
+		case INTMATRIX:
+			return "IntArray_view((PyObject *) o, v->elements[i])";
+		case REALMATRIX:
+			return "RealArray_view((PyObject *) o, v->elements[i])";
+		case BOOLEANMATRIX:
+			return "BooleanArray_view((PyObject *) o, v->elements[i])";
+		case PMFARRAY:
+			return "Pmf_view((PyObject *) o, v->elements[i])";
+		case PMFMATRIX:
+			return "PmfArray_view((PyObject *) o, v->elements[i])";
+		default:
+			assert (false);
+			return null;
+		}
+	}
+
 	private static void generateModule(String modulename, ArrayList<Engine> allEngines) {
 		_cSourceWriter.println("// MODULE");
 		_cSourceWriter.println();
@@ -593,11 +722,45 @@ public class Generator implements QParserConstants {
 		// PyInit_XXX
 		TemplateExpander t = new TemplateExpander.FromFile("Module.txt");
 		t.substitute("@MODULE-NAME", modulename);
-		for (Engine engine : allEngines) {
-			String engineName = engine._engineName;
-			t.repeat().substitute("@OBJECT-NAME", engineName);
-		}
+		for (Engine engine : allEngines)
+			addModuleTypeRepetition(t, "_" + engine._engineName + "_Type", engine._engineName);
+
+		String[][] dataObjects = { //
+				{ "PmfDataObject_Type", "pmf" }, //
+				{ "IntArrayDataObject_Type", "int_array" }, //
+				{ "RealArrayDataObject_Type", "real_array" }, //
+				{ "BooleanArrayDataObject_Type", "boolean_array" }, //
+				{ "PmfArrayDataObject_Type", "pmf_array" }, //
+				{ "IntMatrixDataObject_Type", "int_matrix" }, //
+				{ "RealMatrixDataObject_Type", "real_matrix" }, //
+				{ "BooleanMatrixDataObject_Type", "boolean_matrix" }, //
+				{ "PmfMatrixDataObject_Type", "pmf_matrix" }, //
+		};
+		for (String[] dataObject : dataObjects)
+			addDataObjectModuleTypeRepetition(t, modulename, dataObject[0], dataObject[1]);
+
 		t.run();
+	}
+
+	/** Adds one engine-type registration: no module-qualified tp_name assignment
+	 *  (the engine's PyTypeObject already carries it) and no ABI stamp. */
+	private static void addModuleTypeRepetition(TemplateExpander t, String typeSymbol, String pyName) {
+		t.repeat() //
+				.substitute("@TYPE-SYMBOL", typeSymbol) //
+				.substitute("@PY-NAME", pyName) //
+				.substitute("@TP-NAME-ASSIGN", "") //
+				.substitute("@ABI-STAMP", "");
+	}
+
+	/** Adds one data-object-type registration: a module-qualified tp_name and a
+	 *  module-independent ABI stamp accompany PyType_Ready and AddObject. */
+	private static void addDataObjectModuleTypeRepetition(TemplateExpander t, String modulename, String typeSymbol,
+			String pyName) {
+		t.repeat() //
+				.substitute("@TYPE-SYMBOL", typeSymbol) //
+				.substitute("@PY-NAME", pyName) //
+				.substitute("@TP-NAME-ASSIGN", "    " + typeSymbol + ".tp_name = \"" + modulename + "." + pyName + "\";") //
+				.substitute("@ABI-STAMP", "    stampDataObjectAbi(&" + typeSymbol + ", Q_ABI_TAG(\"" + pyName + "\"));");
 	}
 
 	private static String toPythonName(String qname) {

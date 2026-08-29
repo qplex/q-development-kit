@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <new>
 #include <climits>
+#include <map>
+#include <vector>
+#include <string>
 #include "structmember.h"
 
 // EXCEPTIONS
@@ -27,13 +30,6 @@ public:
 
 [[noreturn]] void abortImport() {
     abort("Invalid value");
-}
-
-double checkDenominator(double x) {
-    if (x == 0)
-        abort("Divide by zero");
-    else
-        return x;
 }
 
 // SCALAR TYPES
@@ -162,6 +158,27 @@ typedef struct {
     int length;
     InterfaceArray *elements[1];
 } InterfaceMatrix;
+
+// ARITHMETIC
+
+double checkDenominator(double x) {
+    if (x == 0)
+        abort("Divide by zero");
+    else
+        return x;
+}
+
+// The remainder takes the sign of the dividend, so -7 % 3 == -1.
+int intMod(int a, int b) {
+    if (b == 0)
+        abort("Divide by zero");
+    if (b == -1)
+        return 0;
+    unsigned int ua = (a < 0) ? 0u - (unsigned int) a : (unsigned int) a;
+    unsigned int ub = (b < 0) ? 0u - (unsigned int) b : (unsigned int) b;
+    unsigned int ur = ua % ub;
+    return (a < 0) ? -(int) ur : (int) ur;
+}
 
 // Q OBJECT AND MEMORY ALLOCATION
 
@@ -324,7 +341,7 @@ void *poolAlloc(QObject *obj, size_t bytes) {
 }
 
 // Return a scratch buffer to its size-class free list for reuse (really freed only at
-// dealloc).  `bytes` must match the logical size passed to the poolAlloc that made it.
+// dealloc). `bytes` must match the logical size passed to the poolAlloc that made it.
 void poolFree(QObject *obj, size_t bytes, void *buffer) {
     Arena *arena = obj->arena;
     int c = poolClass(bytes);
@@ -333,6 +350,22 @@ void poolFree(QObject *obj, size_t bytes, void *buffer) {
     *(void **) buffer = arena->bufferPool[c];
     arena->bufferPool[c] = buffer;
 }
+// Cross-module ABI version for the data-object memory layout. Two engines from
+// different modules exchange a data object only when this number matches, so bump
+// it whenever the layout of anything the cross-module copy touches changes, not
+// only the object wrappers (QObject, WrappedPmf, WrappedArray<V>) but every value
+// struct the copy primitives walk through the accepted foreign object's value
+// pointer: Pmf and its overlays, and IntArray / RealArray / BooleanArray /
+// IntMatrix / RealMatrix / BooleanMatrix / PmfArray / PmfMatrix (dereferenced by
+// copyPmf and WrappedArrayTraits<V>::copy). Each data-object type is stamped at import
+// with an "__q_abi__" string tag "<data type>:<Q_ABI>" (see stampDataObjectAbi +
+// PyInit); a Xxx_in converter accepts another module's object only when that tag
+// equals its own. The number itself lives in q_abi_version.txt at the repo root
+// (baked in here at compiler-build time); bump it there when the layout changes.
+#define Q_ABI @Q_ABI@
+#define Q_ABI_STRINGIFY_(x) #x
+#define Q_ABI_STRINGIFY(x) Q_ABI_STRINGIFY_(x)
+#define Q_ABI_TAG(dataType) (dataType ":" Q_ABI_STRINGIFY(Q_ABI))
 
 void *qmalloc(QObject *obj, size_t size) {
     obj->isMemModified = true;
@@ -1040,6 +1073,89 @@ InterfaceMatrix *initializeInterfaceMatrix(QObject *obj, int rowCount, ...) {
     return m;
 }
 
+// COPY
+
+Pmf *copyPmf(QObject *dest, Pmf *src) {
+    switch (src->pmfType) {
+    case SIMPLE: {
+        Pmf *pmf = allocateSimplePmf(dest, src->simple.offset, src->simple.length);
+        memcpy(pmf->simple.elements, src->simple.elements, src->simple.length * sizeof(Real));
+        return pmf;
+    }
+    case JOINT: {
+        Pmf *marginal = copyPmf(dest, src->joint.marginal);
+        Pmf *pmf = allocateJointPmf(dest, marginal, src->joint.depth);
+        // A branch with zero marginal probability is left NULL (as the engine
+        // leaves it); copy only the populated branches, mirroring flag().
+        for (int i = 0; i < marginal->simple.length; i++)
+            if (src->joint.elements[i])
+                pmf->joint.elements[i] = copyPmf(dest, src->joint.elements[i]);
+        return pmf;
+    }
+    case COMPOUND: {
+        Pmf *pmf = allocateCompoundPmf(dest, src->compound.length);
+        for (int i = 0; i < src->compound.length; i++)
+            pmf->compound.elements[i] = copyPmf(dest, src->compound.elements[i]);
+        return pmf;
+    }
+    default:
+        abortInternal();
+    }
+}
+
+IntArray *copyIntArray(QObject *dest, IntArray *src) {
+    IntArray *a = createIntArray(dest, src->length);
+    memcpy(a->elements, src->elements, src->length * sizeof(Int));
+    return a;
+}
+
+RealArray *copyRealArray(QObject *dest, RealArray *src) {
+    RealArray *a = createRealArray(dest, src->length);
+    memcpy(a->elements, src->elements, src->length * sizeof(Real));
+    return a;
+}
+
+BooleanArray *copyBooleanArray(QObject *dest, BooleanArray *src) {
+    BooleanArray *a = createBooleanArray(dest, src->length);
+    memcpy(a->elements, src->elements, src->length * sizeof(Boolean));
+    return a;
+}
+
+PmfArray *copyPmfArray(QObject *dest, PmfArray *src) {
+    PmfArray *a = allocatePmfArray(dest, src->length);
+    for (int i = 0; i < src->length; i++)
+        a->elements[i] = copyPmf(dest, src->elements[i]);
+    return a;
+}
+
+IntMatrix *copyIntMatrix(QObject *dest, IntMatrix *src) {
+    IntMatrix *m = allocateIntMatrix(dest, src->length, 0);
+    for (int i = 0; i < src->length; i++)
+        m->elements[i] = copyIntArray(dest, src->elements[i]);
+    return m;
+}
+
+RealMatrix *copyRealMatrix(QObject *dest, RealMatrix *src) {
+    RealMatrix *m = allocateRealMatrix(dest, src->length, 0);
+    for (int i = 0; i < src->length; i++)
+        m->elements[i] = copyRealArray(dest, src->elements[i]);
+    return m;
+}
+
+BooleanMatrix *copyBooleanMatrix(QObject *dest, BooleanMatrix *src) {
+    BooleanMatrix *m = allocateBooleanMatrix(dest, src->length, 0);
+    for (int i = 0; i < src->length; i++)
+        m->elements[i] = copyBooleanArray(dest, src->elements[i]);
+    return m;
+}
+
+PmfMatrix *copyPmfMatrix(QObject *dest, PmfMatrix *src) {
+    PmfMatrix *m = allocatePmfMatrix(dest, src->length, 0);
+    for (int i = 0; i < src->length; i++)
+        m->elements[i] = copyPmfArray(dest, src->elements[i]);
+    return m;
+}
+
 // ARRAY LOOKUP
 
 Int &lookup(IntArray *a, Int i) {
@@ -1116,7 +1232,7 @@ InterfaceArray *&lookup(InterfaceMatrix *m, Int i) {
 // PMF LOOKUP
 
 Real lookupProbability(Pmf *pmf, Int i) {
-    if (i >= pmf->simple.offset && i < pmf->simple.offset+pmf->simple.length)
+    if (i >= pmf->simple.offset && i - pmf->simple.offset < pmf->simple.length)
         return pmf->simple.elements[i-pmf->simple.offset];
     else
         return 0;
@@ -1219,11 +1335,11 @@ SimpleAccumulator *SimpleAccumulator::putSingle(Real probability, Int value) {
         if (value < 0)
             abort("Negative integer in pmf support");
 
-        long long newLength64 = 2LL * (offset + length - value);
+        long long newLength64 = 2LL * ((long long) offset + length - value);
         if (newLength64 > INT_MAX)
-            abort("pmf value range too wide");
+            abort("pmf outcome range too wide");
         int newLength = (int) newLength64;
-        int newOffset = std::max(offset + length - newLength, 0);
+        int newOffset = (int) std::max((long long) offset + length - newLength, 0LL);
         Real *newElements = (Real *) poolAlloc(obj, newLength * sizeof(Real));
         memset(newElements, 0, newLength * sizeof(Real));
         memcpy(
@@ -1235,7 +1351,7 @@ SimpleAccumulator *SimpleAccumulator::putSingle(Real probability, Int value) {
         elements = newElements;
         offset = newOffset;
         length = newLength;
-    } else if (value >= offset + length) {
+    } else if (value - offset >= length) {
         if (length == 0) {
             elements = (Real *) poolAlloc(obj, sizeof(Real));
             elements[0] = probability;
@@ -1244,9 +1360,9 @@ SimpleAccumulator *SimpleAccumulator::putSingle(Real probability, Int value) {
             return this;
         }
 
-        long long newLength64 = 2LL * (1 + value - offset);
+        long long newLength64 = 2LL * (1LL + value - offset);
         if (newLength64 > INT_MAX)
-            abort("pmf value range too wide");
+            abort("pmf outcome range too wide");
         int newLength = (int) newLength64;
         Real *newElements = (Real *) poolAlloc(obj, newLength * sizeof(Real));
         memset(newElements, 0, newLength * sizeof(Real));
@@ -1274,21 +1390,22 @@ Pmf *SimpleAccumulator::toPmf() {
    if (length == 0)
         abort("Empty pmf");
     
-    int minValue = offset;
-    int maxValue = offset + length - 1;
-    while (minValue <= maxValue && elements[minValue - offset] == 0)
-        minValue++;
-    while (maxValue >= minValue && elements[maxValue - offset] == 0)
-        maxValue--;
+    int lo = 0;
+    int hi = length - 1;
+    while (lo <= hi && elements[lo] == 0)
+        lo++;
+    while (hi >= lo && elements[hi] == 0)
+        hi--;
         
-    if (maxValue < minValue)
+    if (hi < lo)
         return allocateSimplePmf(obj, 0, 0);
     
-    Pmf *newPmf = allocateSimplePmf(obj, minValue, 1 + maxValue - minValue);
+    int newLength = hi - lo + 1;
+    Pmf *newPmf = allocateSimplePmf(obj, offset + lo, newLength);
     memcpy(
            newPmf->simple.elements,
-           &elements[minValue - offset],
-           (1 + maxValue - minValue) * sizeof(Real)
+           &elements[lo],
+           newLength * sizeof(Real)
     );
     
     sum = 0;
@@ -1391,11 +1508,11 @@ void JointAccumulator::ensureSlot(Int value) {
         if (value < 0)
             abort("Samples must be nonnegative integers");
 
-        long long newLength64 = 2LL * (offset + length - value);
+        long long newLength64 = 2LL * ((long long) offset + length - value);
         if (newLength64 > INT_MAX)
-            abort("pmf value range too wide");
+            abort("pmf outcome range too wide");
         int newLength = (int) newLength64;
-        int newOffset = std::max(offset + length - newLength, 0);
+        int newOffset = (int) std::max((long long) offset + length - newLength, 0LL);
         Accumulator **newElements = (Accumulator **) poolAlloc(obj, newLength * sizeof(Accumulator *));
         memset(newElements, 0, newLength * sizeof(Accumulator *));
         memcpy(&newElements[offset - newOffset], elements, length * sizeof(Accumulator *));
@@ -1403,7 +1520,7 @@ void JointAccumulator::ensureSlot(Int value) {
         elements = newElements;
         offset = newOffset;
         length = newLength;
-    } else if (value >= offset + length) {
+    } else if (value - offset >= length) {
         if (length == 0) {
             offset = value;
             length = 1;
@@ -1412,9 +1529,9 @@ void JointAccumulator::ensureSlot(Int value) {
             return;
         }
 
-        long long newLength64 = 2LL * (value + 1 - offset);
+        long long newLength64 = 2LL * (value + 1LL - offset);
         if (newLength64 > INT_MAX)
-            abort("pmf value range too wide");
+            abort("pmf outcome range too wide");
         int newLength = (int) newLength64;
         int oldLength = length;
         Accumulator **newElements = (Accumulator **) poolAlloc(obj, newLength * sizeof(Accumulator *));
@@ -1465,23 +1582,24 @@ Pmf *JointAccumulator::toPmf() {
     if (length == 0)
         abort("Empty pmf");
    
-    int minValue = offset;
-    int maxValue = offset + length - 1;
-    while (minValue <= maxValue && isEmptySlot(minValue - offset))
-        minValue++;
-    while (maxValue >= minValue && isEmptySlot(maxValue - offset))
-        maxValue--;
+    int lo = 0;
+    int hi = length - 1;
+    while (lo <= hi && isEmptySlot(lo))
+        lo++;
+    while (hi >= lo && isEmptySlot(hi))
+        hi--;
 
-    if (maxValue < minValue)
+    if (hi < lo)
         return allocateEmptyJointPmf(obj, depth);
 
-    Pmf *marginal = allocateSimplePmf(obj, minValue, maxValue+1-minValue);
+    int newLength = hi - lo + 1;
+    Pmf *marginal = allocateSimplePmf(obj, offset + lo, newLength);
     Pmf *jointPmf = allocateJointPmf(obj, marginal, depth);
-    for (int value=minValue; value<=maxValue; value++) {
-         Accumulator *element = elements[value-offset];
+    for (int index=lo; index<=hi; index++) {
+         Accumulator *element = elements[index];
          if (element && !element->isEmpty()) {
-            jointPmf->joint.elements[value-minValue] = element->toPmf();
-            marginal->simple.elements[value-minValue] = element->sum;
+            jointPmf->joint.elements[index-lo] = element->toPmf();
+            marginal->simple.elements[index-lo] = element->sum;
         }
     }
     sum = 0;
@@ -1619,8 +1737,9 @@ Int computeLeftTail(Pmf *pmf, Real epsilon) {
             return i + offset;
     }
 
-    return n + offset;
-}	
+    Int last = offset + (n - 1);       // largest outcome, fits Int
+    return last < INT_MAX ? last + 1 : INT_MAX;
+}
 
 Int computeRightTail(Pmf *pmf, Real epsilon) {
     if (pmf->pmfType != SIMPLE)
@@ -1685,7 +1804,7 @@ Pmf *multinomialLayer(QObject *obj, int n, int k, Real *gamma) {
 }
 
 Pmf *multinomial(QObject *obj, int n, int k, Pmf *p) {
-    if (p->pmfType != SIMPLE || p->simple.offset+p->simple.length > k)
+    if (p->pmfType != SIMPLE || (long long) p->simple.offset + p->simple.length > k)
         abort("Invalid multinomial parameters");
     Real *gamma = (Real *) calloc(k, sizeof(Real));
     Real r = 1;
@@ -1834,101 +1953,207 @@ PmfMatrix *confirmJointPmfMatrix(PmfMatrix *m, int depth) {
     return m;
 }
 
-Pmf *confirmCompoundPmf(Pmf *pmf, int length, ...) {
+// A marginal distribution over a chosen subset of a component's variables,
+// keyed by the tuple of their values.  Built by enumeration to check that
+// overlapping compound components agree; it lives in ordinary heap memory (not
+// an engine arena) and is discarded when the check returns.
+typedef std::map<std::vector<Int>, Real> MarginalMap;
+
+// Accumulates, for each combination of the selected variable positions, the total probability.
+// positions[t] is a 0-based index into the component's variables (0 = the outermost/first-listed).
+// The probability counterpart of marginalizeTangent, which sums derivatives instead.
+static void marginalizeComponent(Pmf *pmf, const std::vector<int> &positions,
+                                 Int *path, int level, Real prefixProbability, MarginalMap &out) {
+    Pmf *marginal = pmf->pmfType == JOINT ? pmf->joint.marginal : pmf;
+    for (int i = 0; i < marginal->simple.length; i++) {
+        Real probability = marginal->simple.elements[i];
+        if (probability <= 0)
+            continue;
+        path[level] = marginal->simple.offset + i;
+        Real nextProbability = prefixProbability * probability;
+        if (pmf->pmfType == JOINT) {
+            marginalizeComponent(pmf->joint.elements[i], positions, path, level + 1, nextProbability, out);
+        } else {
+            std::vector<Int> key(positions.size());
+            for (size_t t = 0; t < positions.size(); t++)
+                key[t] = path[positions[t]];
+            out[key] += nextProbability;
+        }
+    }
+}
+
+// Two marginals (over the same variables, in the same order) agree when they
+// have the same support and matching probabilities.  The tolerance absorbs the
+// rounding of re-summing an engine-produced marginal in a different order; a
+// genuinely inconsistent user-supplied component differs by far more.
+static bool marginalsAgree(const MarginalMap &a, const MarginalMap &b) {
+    const Real tolerance = 1e-9;
+    if (a.size() != b.size())
+        return false;
+    for (MarginalMap::const_iterator it = a.begin(); it != a.end(); ++it) {
+        MarginalMap::const_iterator jt = b.find(it->first);
+        if (jt == b.end())
+            return false;
+        Real diff = it->second - jt->second;
+        if (diff < 0)
+            diff = -diff;
+        if (diff > tolerance)
+            return false;
+    }
+    return true;
+}
+
+// Where two compound components name a variable in common, they describe the
+// same random variable and so must agree on its distribution.  varsA[p]/varsB[q]
+// are the components' variable-identity indices (assigned by the compiler: equal
+// index == same named variable; wildcards get unique indices and never match).
+// We marginalize each component down to the shared variables and compare.
+static void confirmCompoundPair(Pmf *pmfA, const std::vector<int> &varsA,
+                                Pmf *pmfB, const std::vector<int> &varsB) {
+    std::vector<int> positionsA, positionsB;
+    for (size_t p = 0; p < varsA.size(); p++)
+        for (size_t q = 0; q < varsB.size(); q++)
+            if (varsA[p] == varsB[q]) {
+                positionsA.push_back((int) p);
+                positionsB.push_back((int) q);
+                break;
+            }
+    if (positionsA.empty())
+        return;                 // no shared named variable
+
+    MarginalMap marginalA, marginalB;
+    std::vector<Int> pathA(varsA.size()), pathB(varsB.size());
+    marginalizeComponent(pmfA, positionsA, pathA.data(), 0, 1, marginalA);
+    marginalizeComponent(pmfB, positionsB, pathB.data(), 0, 1, marginalB);
+    if (!marginalsAgree(marginalA, marginalB))
+        abortImport();
+}
+
+// Confirms one pmf against a compound descriptor (a variable-identity index list per
+// component): the right shape (a compound of the right length whose components have the
+// right depths), then that every pair of overlapping components is mutually consistent.
+static void confirmCompoundValue(Pmf *pmf, const std::vector<std::vector<int> > &componentVars) {
+    int length = (int) componentVars.size();
     if (pmf->pmfType != COMPOUND)
         abortImport();
-    else if (pmf->compound.length != length)
+    if (pmf->compound.length != length)
         abortImport();
-    else {
-        va_list valist;
-        va_start(valist, length);
-        
-        for (int i=0; i<length; i++) {
-            Pmf *q = pmf->compound.elements[i];
-            int depth = va_arg(valist, int);
-            
-            if (depth == 1)
-                confirmSimplePmf(q);
-            else
-                confirmJointPmf(q, depth);
-        }
-        
-        va_end(valist);
+    for (int i = 0; i < length; i++) {
+        Pmf *q = pmf->compound.elements[i];
+        if (componentVars[i].size() == 1)
+            confirmSimplePmf(q);
+        else
+            confirmJointPmf(q, (int) componentVars[i].size());
     }
+    for (int i = 0; i < length; i++)
+        for (int j = i + 1; j < length; j++)
+            confirmCompoundPair(pmf->compound.elements[i], componentVars[i],
+                                pmf->compound.elements[j], componentVars[j]);
+}
 
+// The confirm... entry points below share one descriptor format in their
+// varargs: after `length`, each component contributes its variable count
+// followed by that many variable-identity indices.
+#define READ_COMPOUND_DESCRIPTOR(length, componentVars)                 \
+    do {                                                                \
+        va_list valist;                                                 \
+        va_start(valist, length);                                       \
+        for (int _i = 0; _i < (length); _i++) {                         \
+            int _depth = va_arg(valist, int);                           \
+            std::vector<int> _vars(_depth);                             \
+            for (int _t = 0; _t < _depth; _t++)                         \
+                _vars[_t] = va_arg(valist, int);                        \
+            (componentVars).push_back(_vars);                           \
+        }                                                               \
+        va_end(valist);                                                 \
+    } while (0)
+
+Pmf *confirmCompoundPmf(Pmf *pmf, int length, ...) {
+    std::vector<std::vector<int> > componentVars;
+    READ_COMPOUND_DESCRIPTOR(length, componentVars);
+    confirmCompoundValue(pmf, componentVars);
     return pmf;
 }
 
 PmfArray *confirmCompoundPmfArray(PmfArray *a, int length, ...) {
-    for (int i=0; i<a->length; i++) {
-        Pmf *pmf = a->elements[i];
-        
-        if (pmf->pmfType != COMPOUND)
-            abortImport();
-        else if (pmf->compound.length != length)
-            abortImport();
-        else {
-            va_list valist;
-            va_start(valist, length);
-            
-            for (int j=0; j<length; j++) {
-                Pmf *q = pmf->compound.elements[j];
-                int depth = va_arg(valist, int);
-                
-                if (depth == 1)
-                    confirmSimplePmf(q);
-                else
-                    confirmJointPmf(q, depth);
-            }
-            
-            va_end(valist);
-        }
-    }
-    
+    std::vector<std::vector<int> > componentVars;
+    READ_COMPOUND_DESCRIPTOR(length, componentVars);
+    for (int i = 0; i < a->length; i++)
+        confirmCompoundValue(a->elements[i], componentVars);
     return a;
 }
 
 PmfMatrix *confirmCompoundPmfMatrix(PmfMatrix *m, int length, ...) {
-    for (int i=0; i<m->length; i++) {
+    std::vector<std::vector<int> > componentVars;
+    READ_COMPOUND_DESCRIPTOR(length, componentVars);
+    for (int i = 0; i < m->length; i++) {
         PmfArray *a = m->elements[i];
-        
-        for (int j=0; j<a->length; j++) {
-            Pmf *pmf = a->elements[j];
-            if (pmf->pmfType != COMPOUND)
-                abortImport();
-            if (pmf->compound.length != length)
-                abortImport();
-            
-            va_list valist;
-            va_start(valist, length);
-            
-            for (int k=0; k<length; k++) {
-                Pmf *q = pmf->compound.elements[k];
-                int depth = va_arg(valist, int);
-                
-                if (depth == 1)
-                    confirmSimplePmf(q);
-                else
-                    confirmJointPmf(q, depth);
-            }
-            
-            va_end(valist);
-        }
+        for (int j = 0; j < a->length; j++)
+            confirmCompoundValue(a->elements[j], componentVars);
     }
-    
     return m;
 }
 
-// PMF IMPORT/EXPORT
+static bool sameQualifierShape(Pmf *a, Pmf *b) {
+    if (a->pmfType != b->pmfType)
+        return false;
+    if (a->pmfType == JOINT)
+        return a->joint.depth == b->joint.depth;
+    if (a->pmfType == COMPOUND) {
+        if (a->compound.length != b->compound.length)
+            return false;
+        for (int i = 0; i < a->compound.length; i++)
+            if (!sameQualifierShape(a->compound.elements[i], b->compound.elements[i]))
+                return false;
+    }
+    return true;
+}
+
+static void confirmSameQualifierShapeInPmfArray(PmfArray *a) {
+    for (int i = 1; i < a->length; i++)
+        if (!sameQualifierShape(a->elements[i], a->elements[0]))
+            abortImport();
+}
+
+static void confirmSameQualifierShapeInPmfMatrix(PmfMatrix *m) {
+    Pmf *ref = NULL;
+    for (int i = 0; i < m->length; i++)
+        for (int j = 0; j < m->elements[i]->length; j++) {
+            Pmf *pmf = m->elements[i]->elements[j];
+            if (ref == NULL)
+                ref = pmf;
+            else if (!sameQualifierShape(pmf, ref))
+                abortImport();
+        }
+}
+
+// IMPORT/EXPORT
+
+// The container converters below accept element data objects as well as plain
+// dicts/lists: each element goes through its <Type>_in (copy if it is already an
+// object, parse if it is a plain dict/list) rather than the plain <Type>_fromPy.
+// Those _in functions are defined later in the file, so declare them here.
+Pmf *Pmf_in(QObject *engine, PyObject *pyObj);
+IntArray *IntArray_in(QObject *o, PyObject *p);
+RealArray *RealArray_in(QObject *o, PyObject *p);
+BooleanArray *BooleanArray_in(QObject *o, PyObject *p);
+PmfArray *PmfArray_in(QObject *o, PyObject *p);
 
 PyObject *Int_toPy(QObject * obj, Int i) {
     return PyLong_FromLong(i);
 }
 
 Int Int_fromPy(QObject * obj, PyObject *pyObj) {
-    if (!PyLong_Check(pyObj))
+    if (!PyLong_Check(pyObj) || PyBool_Check(pyObj))   // bool is a PyLong subclass; keep int strict
         abortImport();
-    return PyLong_AsLong(pyObj);
+    long value = PyLong_AsLong(pyObj);
+    if (value == -1 && PyErr_Occurred()) {   // too large even for a C long
+        PyErr_Clear();
+        abortImport();
+    }
+    if (value < INT_MIN || value > INT_MAX)   // fits a long but not a 32-bit Int
+        abortImport();
+    return (Int) value;
 }
 
 PyObject *Real_toPy(QObject * obj, Real x) {
@@ -1936,11 +2161,22 @@ PyObject *Real_toPy(QObject * obj, Real x) {
 }
 
 Real Real_fromPy(QObject * obj, PyObject *pyObj) {
-    if (PyFloat_Check(pyObj))
-        return PyFloat_AsDouble(pyObj);
-    if (PyLong_Check(pyObj))
-        return PyLong_AsDouble(pyObj);
-    abortImport();
+    double value;
+    if (PyFloat_Check(pyObj)) {
+        value = PyFloat_AsDouble(pyObj);
+    } else if (PyLong_Check(pyObj) && !PyBool_Check(pyObj)) {   // reject bool; keep real strict
+        value = PyLong_AsDouble(pyObj);
+        if (value == -1.0 && PyErr_Occurred()) {   // int too large for a double
+            PyErr_Clear();
+            abortImport();
+        }
+    } else {
+        abortImport();
+    }
+    Real e = value - value;                         // nan if value is inf or nan
+    if (e != e)
+        abortImport();
+    return value;
 }
 
 PyObject *Boolean_toPy(QObject * obj, Boolean b) {
@@ -2004,6 +2240,13 @@ PyObject *Pmf_toPy(QObject *obj, Pmf *pmf) {
     }
 }
 
+// A pmf probability is read through Real_fromPy, which rejects a non-finite value
+// (inf or nan). A finite value above 1 is fine: normalization caps any probability
+// greater than one at 1.
+static Real probability_fromPy(QObject *obj, PyObject *pyObj) {
+    return Real_fromPy(obj, pyObj);
+}
+
 Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
     PmfType pmfType;
     int depth = -1;
@@ -2019,7 +2262,9 @@ Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
             pmfType = SIMPLE;
         else if (PyTuple_Check(key)) {
             pmfType = JOINT;
-            depth = PyTuple_Size(key);
+            depth = (int) PyTuple_Size(key);
+            if (depth < 2)                         // 0 (empty tuple) crashed; 1 is meaningless
+                abort("a joint pmf key must be a tuple of two or more outcomes");
         } else
             abortImport();
      } else
@@ -2031,7 +2276,7 @@ Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
             PyObject *key, *value;
             Py_ssize_t pos = 0;
             while (PyDict_Next(pyObj, &pos, &key, &value))
-                a.putSingle(Real_fromPy(obj, value), Int_fromPy(obj, key));
+                a.putSingle(probability_fromPy(obj, value), Int_fromPy(obj, key));
             return a.toPmf();
         }
         case JOINT: {
@@ -2039,14 +2284,20 @@ Pmf *Pmf_fromPy(QObject * obj, PyObject *pyObj) {
             PyObject *key, *value;
             Py_ssize_t pos = 0;
             while (PyDict_Next(pyObj, &pos, &key, &value))
-                a.put_fromPy(Real_fromPy(obj, value), key);
+                a.put_fromPy(probability_fromPy(obj, value), key);
             return a.toPmf();
         }
         case COMPOUND: {
-            int n = PyTuple_Size(pyObj);
+            int n = (int) PyTuple_Size(pyObj);
+            if (n < 2)                             // an empty/singleton tuple is not a compound
+                abort("a compound pmf must have two or more components");
             Pmf *pmf = allocateCompoundPmf(obj, n);
-            for (int i=0; i<n; i++)
-                pmf->compound.elements[i] = Pmf_fromPy(obj, PyTuple_GET_ITEM(pyObj, i));
+            for (int i=0; i<n; i++) {
+                Pmf *component = Pmf_in(obj, PyTuple_GET_ITEM(pyObj, i));   // a dict/tuple or a pmf object
+                if (component->pmfType == COMPOUND)
+                    abort("a compound pmf's components must be simple or joint, not compound");
+                pmf->compound.elements[i] = component;
+            }
             return pmf;
         }
         default:
@@ -2151,9 +2402,21 @@ PmfArray *PmfArray_fromPy(QObject *obj, PyObject *pyObj) {
 
     PmfArray *a = allocatePmfArray(obj, length);
     for (int i=0; i<length; i++)
-        a->elements[i] = Pmf_fromPy(obj, PyList_GET_ITEM(pyObj, i));
-    
+        a->elements[i] = Pmf_in(obj, PyList_GET_ITEM(pyObj, i));
+
+    confirmSameQualifierShapeInPmfArray(a);
+
     return a;
+}
+
+PyObject *IntMatrix_toPy(QObject * obj, IntMatrix *m) {
+    int n = m->length;
+    PyObject *pyList = PyList_New(n);
+    
+    for (int i=0; i<n; i++)
+        PyList_SetItem(pyList, i, IntArray_toPy(obj, m->elements[i]));
+    
+    return pyList;
 }
 
 IntMatrix *IntMatrix_fromPy(QObject *obj, PyObject *pyObj) {
@@ -2168,20 +2431,10 @@ IntMatrix *IntMatrix_fromPy(QObject *obj, PyObject *pyObj) {
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
-        m->elements[i] = IntArray_fromPy(obj, pyRow);
+        m->elements[i] = IntArray_in(obj, pyRow);
     }    
 
     return m;
-}
-
-PyObject *IntMatrix_toPy(QObject * obj, IntMatrix *m) {
-    int n = m->length;
-    PyObject *pyList = PyList_New(n);
-    
-    for (int i=0; i<n; i++)
-        PyList_SetItem(pyList, i, IntArray_toPy(obj, m->elements[i]));
-    
-    return pyList;
 }
 
 PyObject *RealMatrix_toPy(QObject * obj, RealMatrix *m) {
@@ -2206,7 +2459,7 @@ RealMatrix *RealMatrix_fromPy(QObject * obj, PyObject *pyObj) {
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
-        m->elements[i] = RealArray_fromPy(obj, pyRow);
+        m->elements[i] = RealArray_in(obj, pyRow);
     }    
 
     return m;
@@ -2234,7 +2487,7 @@ BooleanMatrix *BooleanMatrix_fromPy(QObject *obj, PyObject *pyObj) {
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
-        m->elements[i] = BooleanArray_fromPy(obj, pyRow);
+        m->elements[i] = BooleanArray_in(obj, pyRow);
     }    
 
     return m;
@@ -2262,8 +2515,10 @@ PmfMatrix *PmfMatrix_fromPy(QObject *obj, PyObject *pyObj) {
     
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
-        m->elements[i] = PmfArray_fromPy(obj, pyRow);
-    }    
+        m->elements[i] = PmfArray_in(obj, pyRow);
+    }
+
+    confirmSameQualifierShapeInPmfMatrix(m);
 
     return m;
 }
@@ -2354,8 +2609,1041 @@ InterfaceMatrix *InterfaceMatrix_fromPy(QObject *obj, PyObject *pyObj, int signa
     for (int i=0; i<rowCount; i++) {
         PyObject *pyRow = PyList_GET_ITEM(pyObj, i);
         m->elements[i] = InterfaceArray_fromPy(obj, pyRow, signatureIndex);
-    }    
+    }
 
     return m;
 }
 
+// DATA OBJECTS
+//
+// The BARE/DATAOBJECT/PY forms and the crossings below are the shared model for
+// every value type, spelled out here with the pmf as the worked example; the
+// array/matrix objects (the ARRAY and MATRIX data objects below) work identically.
+//
+// A distribution has two arena forms that the engine copies between at its
+// boundary, plus a plain-Python projection materialized only on demand:
+//   - BARE (Pmf *): lives in an engine's arena, managed by that engine's
+//     collector; its lifetime is tied to the engine. This is what Q code runs on.
+//   - DATAOBJECT (PmfDataObject, the <q_module>.pmf object): the same internal representation in a
+//     standalone, Python-owned arena, freed by refcount. BARE <-> DATAOBJECT is a
+//     pure arena/ownership change (identical shape), and it is the only wall the
+//     engine boundary actually crosses: Pmf_out hands a fresh DATAOBJECT out
+//     (function results, public-var reads); Pmf_in copies one in (arguments,
+//     public writes).
+//   - PY (dict / tuple): plain Python data; the same distribution serialized
+//     into native containers (a dict, or a tuple of dicts for a compound). It is
+//     not a form the boundary hands out; the engine never returns or reads PY.
+//     It appears only on demand, via to_plain(), or the object's read-only
+//     dict-like slots (repr/str/iteration/==/pickle), or as an accepted input:
+//     Pmf_in takes a plain dict (or tuple) just as it takes a <q_module>.pmf, and either way the value
+//     is copied in and validated at the typed boundary, so a dict is checked
+//     exactly like an object. (Building a <q_module>.pmf from a dict runs the same parse.)
+//
+// Every arena crossing copies; nothing is shared between arenas, so the engine
+// never holds a pointer into a Python-owned object or vice versa. Crossing to or
+// from PY (Pmf_toPy / PmfDataObject_toPy / Pmf_fromPy) additionally reshapes the contiguous
+// array <-> a dict/tuple.
+//
+// Each object is read-only and behaves like a dict (simple/joint) or a tuple
+// (compound). This type is defined once, here, but every generated module
+// carries its own copy, so at runtime <q_module1>.pmf and
+// <q_module2>.pmf are distinct type objects (byte-for-byte identical, but not the
+// same type: isinstance across modules is false). A value can still cross module
+// boundaries: each type is stamped with a shared "__q_abi__" tag ("<data type>:<Q_ABI>"),
+// and a Xxx_in converter accepts another module's object when that tag matches its
+// own (same data type, same layout), copying it in through the identical
+// struct. A mismatched Q_ABI (or a different data type) is not recognized and
+// falls back to the plain dict/list parse.
+//
+// WHO OWNS WHAT MEMORY
+//
+//   form                                       owner (arena)             freed by
+//   -----------------------------------------  ------------------------  ----------------------
+//   BARE       Pmf *                           the engine QObject        the engine's collector
+//   DATAOBJECT <q_module>.pmf (PmfDataObject)  the PmfDataObject itself  Python refcount
+//   PY         dict / tuple                    CPython                   Python refcount
+//
+// The routines that move a value between forms (the "memory" column shows
+// whether a crossing also reshapes the array <-> a dict/tuple; the first two stay in
+// the arena forms, the last three go to/from PY):
+//
+//   function            crossing               memory          used at
+//   ------------------  ---------------------  --------------  --------------------------------
+//   Pmf_in              DATAOBJECT|PY -> BARE  copy            function args + public writes
+//   Pmf_out             BARE -> DATAOBJECT     copy            function results, public reads
+//   Pmf_toPy            BARE -> PY             copy + reshape  to_plain(), dict-like slots
+//   Pmf_fromPy          PY -> BARE             copy + reshape  inside Pmf_in; also construction
+//   PmfDataObject_toPy  DATAOBJECT -> PY       copy + reshape  to_plain(), dict-like slots
+//
+// Each array and matrix object has the same five crossings via its parallel
+// Xxx_in / Xxx_out / Xxx_toPy / Xxx_fromPy / ArrayDataObject_toPy.
+
+// Each generated module has its own copy of these types, so a value from another
+// module fails PyObject_TypeCheck against this module's type. But every module
+// stamps its data-object types with a shared, module-independent tag, an
+// "__q_abi__" string tag "<data type>:<Q_ABI>", so the copy-in converters can
+// still recognize another module's value when the data type and layout match, and copy
+// it in through the identical struct. This stamps one type with that tag; call
+// after PyType_Ready (tp_dict must exist).
+static void stampDataObjectAbi(PyTypeObject *type, const char *tag) {
+    PyObject *s = PyUnicode_FromString(tag);
+    if (s) {
+        PyDict_SetItemString(type->tp_dict, "__q_abi__", s);
+        Py_DECREF(s);
+    }
+    PyErr_Clear();
+}
+
+// Whether pyObj is a data object of selfType's kind and Q_ABI, i.e., built (possibly by
+// another module) against the identical layout, so its value can be read through
+// selfType's struct and copied in. Compares the two "__q_abi__" string tags
+// ("<data type>:<Q_ABI>"). Returns false when pyObj is not one of our data objects
+// at all (no tag, or a different data type). Aborts when pyObj is the same kind
+// but an incompatible Q_ABI (a binary-incompatible build).
+static bool isMatchingDataObject(PyObject *pyObj, PyTypeObject *selfType) {
+    PyObject *theirs = PyObject_GetAttrString((PyObject *) Py_TYPE(pyObj), "__q_abi__");
+    if (!theirs) {
+        PyErr_Clear();
+        return false;
+    }
+    PyObject *mine = PyObject_GetAttrString((PyObject *) selfType, "__q_abi__");
+    bool match = false, incompatible = false;
+    if (mine && PyUnicode_Check(theirs) && PyUnicode_Check(mine)) {
+        const char *a = PyUnicode_AsUTF8(theirs);   // pyObj's tag,  e.g. "pmf:2"
+        const char *b = PyUnicode_AsUTF8(mine);     // selfType tag, e.g. "pmf:1"
+        if (a && b) {
+            if (strcmp(a, b) == 0) {
+                match = true;                       // same data type + Q_ABI: safe to copy in
+            } else {
+                // A shared "<data type>:" prefix but a different Q_ABI = the same kind
+                // of object from an incompatible build; a different prefix is an
+                // unrelated data type (not ours).
+                const char *colon = strchr(b, ':');
+                size_t prefixLen = colon ? (size_t) (colon - b + 1) : strlen(b);
+                incompatible = strncmp(a, b, prefixLen) == 0;
+            }
+        }
+    }
+    Py_XDECREF(mine);
+    Py_DECREF(theirs);
+    PyErr_Clear();
+    if (incompatible)
+        abort("object was built with an incompatible QDK version");
+    return match;
+}
+
+// Every data object begins with the same header: a QObject arena, a
+// pointer to the value it holds, and an owner. PmfDataObject and ArrayDataObject<V>
+// each restate this layout with a typed value pointer; DataObject names that
+// shared shape, so determining a value's owner can stay agnostic to which of the
+// two types it is (see rootOwner below).
+struct DataObject {
+    QObject qobject;
+    void *value;
+    PyObject *owner;
+};
+
+// The object that ultimately owns a data object's arena: the object itself
+// when owner == NULL, otherwise the object its value is borrowed from. A view
+// pins this root directly instead of an intermediate view, so owner links stay
+// flat (depth 1) however deeply a value is sliced or indexed. Returns a borrowed
+// reference.
+static PyObject *rootOwner(PyObject *obj) {
+    while (((DataObject *) obj)->owner)
+        obj = ((DataObject *) obj)->owner;
+    return obj;
+}
+
+// PmfDataObject
+
+// The <q_module>.pmf object: a QObject arena plus a pointer to the distribution it holds.
+// Usually the distribution lives in this object's own arena (owner == NULL). A
+// pmf handed out as a container element (pmf_array[i]) is instead a view: value
+// is borrowed from another object's arena and owner is that object, kept alive
+// by a reference for as long as this view exists (see Pmf_view / PmfDataObject_dealloc).
+// A compound slice (c[i:j]) is a hybrid: the compound header is owned in this
+// object's own arena while its component pointers borrow the owner's components,
+// with owner set to pin them (see Pmf_compoundSliceView).
+typedef struct {
+    QObject qobject;
+    Pmf *value;
+    PyObject *owner;
+} PmfDataObject;
+
+// DATAOBJECT -> PY: the object's distribution as a plain dict/tuple (reshape). This is the one
+// choke point every read-only slot (str/repr/iter/==/to_plain/reduce) materializes through, so
+// it translates a CException here rather than letting one escape those slots uncaught; all
+// callers already handle a NULL return.
+static PyObject *PmfDataObject_toPy(PmfDataObject *self) {
+    try {
+        return Pmf_toPy((QObject *) self, self->value);
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// If this object borrows its value from another (a view like pmf_array[i], or a
+// compound slice, owner != NULL), drop the reference that pinned the owner alive;
+// the borrowed value lives in the owner's arena and is never freed here. Then
+// dealloc() always frees this object's own arena: the whole distribution for an
+// owned pmf, just the header for a compound slice, nothing for a pure view, and
+// frees the object itself.
+static void PmfDataObject_dealloc(PyObject *selfObj) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    if (self->owner)
+        Py_DECREF(self->owner);
+    dealloc((QObject *) self);
+}
+
+// Direct read: for a simple or joint pmf, the number of outcomes with nonzero
+// probability (matches the dict, which omits zero-probability values); for a
+// compound, the number of components (matches len() on its tuple of components).
+static Py_ssize_t countPmfOutcomes(Pmf *pmf) {
+    switch (pmf->pmfType) {
+    case SIMPLE: {
+        Py_ssize_t n = 0;
+        for (int i = 0; i < pmf->simple.length; i++)
+            if (pmf->simple.elements[i] > 0)
+                n++;
+        return n;
+    }
+    case JOINT: {
+        Py_ssize_t n = 0;
+        Pmf *marginal = pmf->joint.marginal;
+        for (int i = 0; i < marginal->simple.length; i++)
+            if (marginal->simple.elements[i] > 0)
+                n += countPmfOutcomes(pmf->joint.elements[i]);
+        return n;
+    }
+    case COMPOUND:
+        return pmf->compound.length;
+    default:
+        return 0;
+    }
+}
+
+static Py_ssize_t PmfDataObject_length(PyObject *selfObj) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    return countPmfOutcomes(self->value);
+}
+
+// Resolve a pmf value key (an int, or any object with __index__, e.g. a numpy
+// integer; callers check PyIndex_Check first) to a C long. Returns 1 and sets
+// *out for a valid nonnegative value; a negative value is never a valid outcome
+// and aborts. Returns 0 for a nonnegative value too large for C long: it cannot
+// be in the support, so it is treated as absent (probability 0.0). Returns -1 if
+// a CPython call fails, leaving its exception set for the caller.
+static int pmfIntKey(PyObject *key, long *out) {
+    PyObject *asInt = PyNumber_Index(key);   // int / numpy int / __index__ -> PyLong
+    if (!asInt)
+        return -1;                           // not integer-like; error already set
+    long v = PyLong_AsLong(asInt);
+    int overflow = (v == -1 && PyErr_Occurred());
+    int isNegative = 0;
+    if (overflow) {
+        PyErr_Clear();
+        PyObject *zero = PyLong_FromLong(0);
+        isNegative = zero ? PyObject_RichCompareBool(asInt, zero, Py_LT) : -1;
+        Py_XDECREF(zero);
+    }
+    Py_DECREF(asInt);                        // release before any abort() unwinds
+    if (overflow) {
+        if (isNegative < 0)
+            return -1;                       // a CPython call failed, error already set
+        if (isNegative > 0)
+            abort("pmf values are nonnegative integers");
+        return 0;                            // huge nonnegative value: absent
+    }
+    if (v < 0)
+        abort("pmf values are nonnegative integers");
+    *out = v;
+    return 1;
+}
+
+// The "?" wildcards for one simple or joint block: `depth` of them, comma-separated
+// (the block's runtime-nameless variables).
+static std::string pmfWildcards(int depth) {
+    std::string s;
+    for (int i = 0; i < depth; i++)
+        s += (i > 0) ? ",?" : "?";
+    return s;
+}
+
+// The pmf's structural qualifier in Q syntax, with "?" for every variable: a
+// runtime pmf carries its shape (simple/joint and its depth, or compound and its
+// component depths) but not the type-level variable names. Examples: "{?}"
+// (simple), "{?,?,?}" (joint of depth 3), "{(?,?),(?)}" (a compound of a depth-2
+// joint and a simple).
+static PyObject *pmfQualifierToPy(Pmf *pmf) {
+    std::string s = "{";
+    if (pmf->pmfType == COMPOUND) {
+        for (int i = 0; i < pmf->compound.length; i++) {
+            s += (i == 0) ? "(" : "),(";
+            Pmf *component = pmf->compound.elements[i];
+            s += pmfWildcards(component->pmfType == JOINT ? component->joint.depth : 1);
+        }
+        s += ")";
+    } else {
+        s += pmfWildcards(pmf->pmfType == JOINT ? pmf->joint.depth : 1);
+    }
+    s += "}";
+    return PyUnicode_FromString(s.c_str());
+}
+
+// Backs the read-only `qualifier_shape` attribute.
+static PyObject *PmfDataObject_get_qualifier(PyObject *selfObj, void *closure) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    return pmfQualifierToPy(self->value);
+}
+
+// str(p) / print(p) show the bare dict/tuple form.
+static PyObject *PmfDataObject_str(PyObject *selfObj) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    PyObject *plain = PmfDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyObject_Str(plain);
+    Py_DECREF(plain);
+    return result;
+}
+
+// repr(p) shows the type, e.g. "testengine.pmf({0: 0.5})"; tp_name names
+// the owning module (a pmf's type differs per module).
+static PyObject *PmfDataObject_repr(PyObject *selfObj) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    PyObject *plain = PmfDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyUnicode_FromFormat("%s(%R)", Py_TYPE(self)->tp_name, plain);
+    Py_DECREF(plain);
+    return result;
+}
+
+// Iterating a pmf enumerates its outcomes (the plain dict's keys). A compound has no
+// outcomes of its own; it is a positional sequence, so index its components with [i].
+static PyObject *PmfDataObject_iter(PyObject *selfObj) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    if (self->value->pmfType == COMPOUND) {
+        try {
+            abort("a compound pmf has no outcomes; index its components with [i]");
+        } catch (CException x) {
+            PyErr_SetString(PException, x.message);
+            return NULL;
+        }
+    }
+    PyObject *plain = PmfDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *iterator = PyObject_GetIter(plain);
+    Py_DECREF(plain);
+    return iterator;
+}
+
+// == and != compare against the plain dict/tuple (so p == {0: 0.5} holds). Ordering
+// ops return NotImplemented (a distribution has no order), so Python raises TypeError.
+static PyObject *PmfDataObject_richcompare(PyObject *selfObj, PyObject *other, int op) {
+    if (op != Py_EQ && op != Py_NE)
+        Py_RETURN_NOTIMPLEMENTED;
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    PyObject *plain = PmfDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyObject_RichCompare(plain, other, op);
+    Py_DECREF(plain);
+    return result;
+}
+
+static PyObject *PmfDataObject_to_plain(PyObject *selfObj, PyObject *ignored) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    return PmfDataObject_toPy(self);
+}
+
+// dict(p) and {**p} probe for a keys() method; refuse, since a pmf is not a mapping
+// and dict() would otherwise silently mis-convert it. Steer to to_plain() instead.
+static PyObject *PmfDataObject_keys(PyObject *selfObj, PyObject *ignored) {
+    try {
+        abort("use to_plain() to convert a pmf to a plain dict/tuple");
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// __reduce__ lets pickle, copy.copy and copy.deepcopy round-trip, matching a
+// plain dict/tuple (which supports all three).
+// Reconstruct by calling the type on the materialized value, type(self)(plain),
+// which routes through PmfDataObject_new -> Pmf_fromPy (a dict for simple/joint, a
+// tuple for compound). Works cross-module too: the type pickles by reference as
+// "<q_module>.pmf" (its tp_name), which is importable as the module attribute.
+static PyObject *PmfDataObject_reduce(PyObject *selfObj, PyObject *ignored) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    PyObject *plain = PmfDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    // (type(self), (plain,)): O adds a reference to the type, N steals ours to plain.
+    return Py_BuildValue("(O(N))", (PyObject *) Py_TYPE(self), plain);
+}
+
+// Construct from a plain dict/tuple, or copy another pmf object. A pmf is
+// immutable, so its value is built here in tp_new and never changes.
+static PyObject *PmfDataObject_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+    PmfDataObject *self = NULL;
+    try {
+        if (kwds && PyDict_Size(kwds))
+            abort("pmf() takes no keyword arguments");
+        PyObject *arg;
+        if (!PyArg_ParseTuple(args, "O", &arg))
+            return NULL;
+        // A source that is another pmf object lives in a different arena, so it stays
+        // valid while this fresh object's arena is populated below.
+        Pmf *source = NULL;
+        if (PyObject_TypeCheck(arg, type))
+            source = ((PmfDataObject *) arg)->value;
+        self = (PmfDataObject *) type->tp_alloc(type, 0);
+        if (!self)
+            return NULL;
+        self->value = source ? copyPmf((QObject *) self, source)
+                             : Pmf_fromPy((QObject *) self, arg);
+        return (PyObject *) self;
+    } catch (CException x) {
+        Py_XDECREF(self);
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+static PyObject *PmfDataObject_subscript(PyObject *selfObj, PyObject *key);
+
+// __array__ for pmf data objects: they are distributions, not numeric grids,
+// so there is no array form.
+static PyObject *PmfDataObject_array(PyObject *selfObj, PyObject *args, PyObject *kwds) {
+    try {
+        abort("pmf data objects have no array form; use to_plain() instead");
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+static PyMappingMethods PmfDataObject_as_mapping = {
+    (lenfunc) PmfDataObject_length,          // mp_length
+    (binaryfunc) PmfDataObject_subscript,    // mp_subscript
+    0,                                    // mp_ass_subscript (NULL => read-only)
+};
+
+static PyMethodDef PmfDataObject_methods[] = {
+    { "to_plain", PmfDataObject_to_plain, METH_NOARGS, NULL },
+    { "keys", PmfDataObject_keys, METH_NOARGS, NULL },
+    { "__array__", (PyCFunction) PmfDataObject_array, METH_VARARGS | METH_KEYWORDS, NULL },
+    { "__reduce__", PmfDataObject_reduce, METH_NOARGS, NULL },
+    { NULL }
+};
+
+static PyGetSetDef PmfDataObject_getset[] = {
+    { "qualifier_shape", PmfDataObject_get_qualifier, NULL,
+      "The pmf's structural qualifier in Q syntax; variables appear as '?'.", NULL },
+    { NULL }
+};
+
+// The bytes this object holds in its own arena. Data objects are immutable, so
+// this is fixed once construction finishes; there is no separate peak. A view
+// owns little or nothing of its own (it borrows its parent's arena), so it
+// reports only its own small footprint, not the data it looks into.
+static PyMemberDef PmfDataObject_members[] = {
+    { "memory_use", T_ULONGLONG, offsetof(PmfDataObject, qobject.currentMemoryUse), READONLY, NULL },
+    { NULL }
+};
+
+static PyTypeObject PmfDataObject_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "pmf",                                 // tp_name
+    sizeof(PmfDataObject),                    // tp_basicsize
+    0,                                     // tp_itemsize
+    (destructor) PmfDataObject_dealloc,       // tp_dealloc
+    0,                                     // tp_vectorcall_offset
+    0,                                     // tp_getattr
+    0,                                     // tp_setattr
+    0,                                     // tp_as_async
+    (reprfunc) PmfDataObject_repr,            // tp_repr
+    0,                                     // tp_as_number
+    0,                                     // tp_as_sequence
+    &PmfDataObject_as_mapping,                // tp_as_mapping
+    PyObject_HashNotImplemented,           // tp_hash
+    0,                                     // tp_call
+    (reprfunc) PmfDataObject_str,             // tp_str
+    0,                                     // tp_getattro
+    0,                                     // tp_setattro
+    0,                                     // tp_as_buffer
+    Py_TPFLAGS_DEFAULT,                    // tp_flags
+    "A probability mass function; a read-only object you index by outcome and iterate.",  // tp_doc
+    0,                                     // tp_traverse
+    0,                                     // tp_clear
+    (richcmpfunc) PmfDataObject_richcompare,  // tp_richcompare
+    0,                                     // tp_weaklistoffset
+    (getiterfunc) PmfDataObject_iter,         // tp_iter
+    0,                                     // tp_iternext
+    PmfDataObject_methods,                    // tp_methods
+    PmfDataObject_members,                    // tp_members
+    PmfDataObject_getset,                     // tp_getset
+    0,                                     // tp_base
+    0,                                     // tp_dict
+    0,                                     // tp_descr_get
+    0,                                     // tp_descr_set
+    0,                                     // tp_dictoffset
+    0,                                     // tp_init
+    0,                                     // tp_alloc
+    PmfDataObject_new,                        // tp_new
+};
+
+// A pmf view into a container element (pmf_array[i]): the distribution is
+// borrowed, not copied, and the container is pinned by a reference so the
+// borrowed buffer stays alive for the view's whole life. Since a pmf is
+// immutable, the borrowed value can never be written through or moved.
+PyObject *Pmf_view(PyObject *owner, Pmf *value) {
+    PmfDataObject *obj = (PmfDataObject *) PmfDataObject_Type.tp_alloc(&PmfDataObject_Type, 0);
+    if (!obj)
+        abort("Out of memory");
+    owner = rootOwner(owner);
+    Py_INCREF(owner);
+    obj->owner = owner;
+    obj->value = value;
+    return (PyObject *) obj;
+}
+
+// A view onto a sub-range of a compound's components: a fresh compound header,
+// owned in this object's own arena, whose element pointers borrow the owner's
+// components in place; the owner is pinned (a reference) so the borrowed pointers
+// stay valid. Used for compound slices below.
+static PyObject *Pmf_compoundSliceView(PyObject *ownerObj, Pmf *compound,
+                                       Py_ssize_t start, Py_ssize_t step, Py_ssize_t count) {
+    PmfDataObject *self = (PmfDataObject *) PmfDataObject_Type.tp_alloc(&PmfDataObject_Type, 0);
+    if (!self)
+        abort("Out of memory");
+    try {
+        Pmf *header = allocateCompoundPmf((QObject *) self, (int) count);
+        for (Py_ssize_t m = 0, idx = start; m < count; m++, idx += step)
+            header->compound.elements[m] = compound->compound.elements[idx];
+        self->value = header;
+    } catch (...) {
+        Py_DECREF(self);
+        throw;
+    }
+    ownerObj = rootOwner(ownerObj);
+    Py_INCREF(ownerObj);
+    self->owner = ownerObj;
+    return (PyObject *) self;
+}
+
+// Direct read of a SIMPLE or JOINT pmf: p[value] is that value's probability
+// (0.0 outside the support; a negative value raises, since pmf values are
+// nonnegative); p[(v0,...)] is the joint probability. A COMPOUND pmf is instead
+// a sequence of its component pmfs: p[i] is the i-th component as a pmf object (a
+// view; negatives count from the end), and a slice p[i:j] is a pmf object too:
+// a sub-compound view when it selects two or more components, the single
+// component when it selects one, and raises when it selects none.
+static PyObject *PmfDataObject_subscript(PyObject *selfObj, PyObject *key) {
+    PmfDataObject *self = (PmfDataObject *) selfObj;
+    Pmf *pmf = self->value;
+    try {
+        switch (pmf->pmfType) {
+        case SIMPLE: {
+            if (!PyIndex_Check(key))
+                abort("pmf value must be an integer");
+            long v;
+            int status = pmfIntKey(key, &v);
+            if (status < 0)
+                return NULL;                       // a CPython call failed, error already set
+            Real p = 0.0;
+            if (status > 0 && v >= pmf->simple.offset && v - pmf->simple.offset < pmf->simple.length)
+                p = pmf->simple.elements[v - pmf->simple.offset];
+            return PyFloat_FromDouble(p);          // status == 0 (huge value) -> absent, 0.0
+        }
+        case JOINT: {
+            int depth = pmf->joint.depth;
+            if (!PyTuple_Check(key) || PyTuple_Size(key) != depth)
+                abort("joint pmf key must be a tuple of integers, one per level");
+            Pmf *cur = pmf;
+            Real prob = 1.0;
+            for (int level = 0; level < depth; level++) {
+                PyObject *item = PyTuple_GET_ITEM(key, level);
+                if (!PyIndex_Check(item))
+                    abort("joint pmf key must contain integers");
+                long v;
+                int status = pmfIntKey(item, &v);
+                if (status < 0)
+                    return NULL;                   // a CPython call failed, error already set
+                if (status == 0)                   // huge coordinate -> absent
+                    return PyFloat_FromDouble(0.0);
+                Pmf *marginal = (cur->pmfType == JOINT) ? cur->joint.marginal : cur;
+                if (v < marginal->simple.offset || v - marginal->simple.offset >= marginal->simple.length)
+                    return PyFloat_FromDouble(0.0);
+                Real branch = marginal->simple.elements[v - marginal->simple.offset];
+                if (branch <= 0)
+                    return PyFloat_FromDouble(0.0);
+                prob *= branch;
+                if (level < depth - 1)
+                    cur = cur->joint.elements[v - marginal->simple.offset];
+            }
+            return PyFloat_FromDouble(prob);
+        }
+        case COMPOUND: {
+            if (PySlice_Check(key)) {
+                Py_ssize_t start, stop, step;
+                if (PySlice_Unpack(key, &start, &stop, &step) < 0)
+                    return NULL;
+                Py_ssize_t count = PySlice_AdjustIndices(pmf->compound.length, &start, &stop, step);
+                if (count == 0)                     // no data object can be empty
+                    abort("empty slice of a compound pmf has no components");
+                if (count == 1)
+                    return Pmf_view(selfObj, pmf->compound.elements[start]);
+                return Pmf_compoundSliceView(selfObj, pmf, start, step, count);
+            }
+            if (!PyIndex_Check(key))
+                abort("compound pmf index must be an integer or a slice");
+            Py_ssize_t i = PyNumber_AsSsize_t(key, PyExc_IndexError);
+            if (i == -1 && PyErr_Occurred())
+                return NULL;
+            int n = pmf->compound.length;
+            if (i < 0)
+                i += n;
+            if (i < 0 || i >= n)
+                abort("compound pmf index out of range");
+            return Pmf_view(selfObj, pmf->compound.elements[i]);
+        }
+        default:
+            abortInternal();
+        }
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// Outbound public boundary (BARE -> DATAOBJECT): function results and public-variable
+// reads. Wraps an engine's distribution in a fresh, Python-owned pmf object (a
+// copy into the object's own arena). The counterpart to Pmf_in; both always copy.
+PyObject *Pmf_out(QObject *sourceObj, Pmf *pmf) {
+    PmfDataObject *obj = (PmfDataObject *) PmfDataObject_Type.tp_alloc(&PmfDataObject_Type, 0);
+    if (!obj)
+        abort("Out of memory");
+    try {
+        obj->value = copyPmf((QObject *) obj, pmf);
+    } catch (...) {
+        Py_DECREF(obj);
+        throw;
+    }
+    return (PyObject *) obj;
+}
+
+// Inbound public boundary (DATAOBJECT|PY -> BARE): function arguments and
+// public-variable writes. Copies an incoming Python pmf into the engine as its own
+// instance. A <q_module>.pmf object is copied out of its arena, a dict/tuple is
+// rebuilt (Pmf_fromPy). The counterpart to Pmf_out; both always copy, never borrow.
+Pmf *Pmf_in(QObject *engine, PyObject *pyObj) {
+    // This module's pmf, or another module's pmf of the same data type + Q_ABI:
+    // identical layout, so read its value and copy it into the engine's arena.
+    if (!PyObject_TypeCheck(pyObj, &PmfDataObject_Type)) {
+        if (!isMatchingDataObject(pyObj, &PmfDataObject_Type))
+            return Pmf_fromPy(engine, pyObj);
+    }
+    PmfDataObject *obj = (PmfDataObject *) pyObj;
+    if (!obj->value)
+        abort("pmf is not initialized");
+    return copyPmf(engine, obj->value);
+}
+
+// array/matrix data object shared infrastructure
+
+// The array and matrix types mirror the pmf object above: each is a Python
+// object that owns its own arena and is read-only, behaving like a list.
+// The two arena forms (BARE / DATAOBJECT) and the plain-Python
+// projection (PY) work exactly as described under DATA OBJECTS above, with "list" in
+// place of "dict" (a container's PY is always a list, or a list of lists for a
+// matrix; its elements are scalars or pmfs in PY form): the boundary copies
+// BARE <-> DATAOBJECT (Xxx_out out, Xxx_in in)
+// and never hands out PY; PY appears only via to_plain() / the list-like slots, or
+// as an accepted input: Xxx_in takes a plain list as readily as a container
+// object, checked the same way at the typed boundary.
+//
+// A single template, ArrayDataObject<V>, implements every container; the per-type
+// ArrayDataObjectTraits<V> supplies just what differs: the plain-list conversion, the
+// deep copy, and how one element is handed to Python. Crossing the engine
+// boundary always copies (an engine arena is not refcounted, so it cannot be
+// pinned): Xxx_out wraps an engine value in a fresh object; Xxx_in copies an
+// incoming object (or list) into the engine.
+//
+// Element access is different. An object element (a row matrix[i] or a pmf
+// pmf_array[i] is handed back as a view: it borrows the element in
+// place (no copy) and keeps a reference to the container so the borrowed buffer
+// stays alive as long as the view does. This is safe only because these values
+// are immutable and single-init: nothing can be written through the view, and
+// the container never rebuilds its buffer, so the borrowed pointer never dangles
+// or moves. Scalar elements (int_array[i]) are plain Python numbers, copied
+// by value, and need no view.
+
+// Every container object has the same shape: a QObject arena plus a pointer to
+// the value it holds (IntArray *, PmfMatrix *, ...). As with the pmf object,
+// owner == NULL means the value lives in this object's own arena; a non-NULL
+// owner marks a view whose value is borrowed from that (pinned) object.
+template <typename V>
+struct ArrayDataObject {
+    QObject qobject;
+    V *value;
+    PyObject *owner;
+};
+
+// Specialized once per container type, below. Each specialization provides:
+//   toPy:    the value in PY form
+//   fromPy:  parse the PY form into an arena (an engine's, or a new object's)
+//   copy:    deep-copy the value into another arena
+//   element: element i as its Python object (a plain scalar, or a fresh view)
+template <typename V>
+struct ArrayDataObjectTraits;
+
+// DATAOBJECT -> PY: the value in PY form, reused by the cold paths (repr, str,
+// iteration, comparison, to_plain, pickling) so they behave exactly like a plain
+// list. Like PmfDataObject_toPy, it is the one choke point they all materialize
+// through, so it translates a CException here rather than letting one escape those
+// slots uncaught; all callers already handle a NULL return.
+template <typename V>
+static PyObject *ArrayDataObject_toPy(ArrayDataObject<V> *self) {
+    try {
+        return ArrayDataObjectTraits<V>::toPy((QObject *) self, self->value);
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// A view borrows its value from a pinned owner, so it frees nothing of its own;
+// it only drops the reference keeping the owner (and the borrowed value) alive.
+// An owned container has owner == NULL and releases its own arena as usual.
+template <typename V>
+static void ArrayDataObject_dealloc(PyObject *selfObj) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    if (self->owner)
+        Py_DECREF(self->owner);
+    dealloc((QObject *) self);
+}
+
+template <typename V>
+static Py_ssize_t ArrayDataObject_length(PyObject *selfObj) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    return self->value->length;
+}
+
+// Are a container's elements pointers (matrix rows, pmfs) or inline scalars? A
+// pointer matches the T* overload (true), anything else the T overload (false).
+// ArrayDataObject_slice uses it to pick slice semantics: pointer elements are
+// borrowed, so the slice pins the parent (a view); inline scalars are copied outright.
+template <typename T> static bool qElementIsPointer(T)  { return false; }
+template <typename T> static bool qElementIsPointer(T*) { return true; }
+
+// A slice arr[i:j] yields an object of the same type, no Python round-trip. Scalar
+// arrays store their elements inline, so their slice is a fresh copy; matrices and
+// pmf_array store element pointers, so their slice borrows the selected pointers
+// into a new header and pins this object (a view, like element access). An empty
+// slice raises: no Q data object can be empty.
+template <typename V>
+static PyObject *ArrayDataObject_slice(PyObject *selfObj, PyObject *sliceKey) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    Py_ssize_t start, stop, step;
+    if (PySlice_Unpack(sliceKey, &start, &stop, &step) < 0)
+        return NULL;
+    Py_ssize_t count = PySlice_AdjustIndices(self->value->length, &start, &stop, step);
+    if (count == 0)                            // no data object can be empty
+        abort("empty slice of a container has no elements");
+    ArrayDataObject<V> *result = (ArrayDataObject<V> *) Py_TYPE(selfObj)->tp_alloc(Py_TYPE(selfObj), 0);
+    if (!result)
+        return NULL;
+    try {
+        V *sliced = (V *) qmalloc((QObject *) result, sizeOfStructWithArraySize(V, elements, count));
+        sliced->length = (int) count;
+        for (Py_ssize_t m = 0; m < count; m++)
+            sliced->elements[m] = self->value->elements[start + m * step];
+        result->value = sliced;
+    } catch (...) {
+        Py_DECREF(result);                     // interior helper: clean up, let subscript translate
+        throw;
+    }
+    // Pointer elements (matrix rows, pmfs) were borrowed from self, so the slice
+    // is a view and must pin self; inline scalars were copied outright.
+    if (qElementIsPointer(self->value->elements[0])) {
+        PyObject *root = rootOwner(selfObj);
+        Py_INCREF(root);
+        result->owner = root;
+    }
+    return (PyObject *) result;
+}
+
+// Direct read: arr[i] is element i (negative indices count from the end; out of
+// range raises). A slice yields a same-type object (see ArrayDataObject_slice); any
+// other key raises (only integers and slices are accepted).
+template <typename V>
+static PyObject *ArrayDataObject_subscript(PyObject *selfObj, PyObject *key) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    try {
+        if (PyIndex_Check(key)) {
+            Py_ssize_t i = PyNumber_AsSsize_t(key, PyExc_IndexError);
+            if (i == -1 && PyErr_Occurred())
+                return NULL;
+            Py_ssize_t n = self->value->length;
+            if (i < 0)
+                i += n;
+            if (i < 0 || i >= n)
+                abort("index out of range");
+            return ArrayDataObjectTraits<V>::element((QObject *) self, self->value, (int) i);
+        }
+        if (PySlice_Check(key))
+            return ArrayDataObject_slice<V>(selfObj, key);
+        abort("index must be an integer or a slice");
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// repr(arr) shows the type, e.g. "testengine.int_array([1, 2, 3])";
+// tp_name names the owning module.
+template <typename V>
+static PyObject *ArrayDataObject_repr(PyObject *selfObj) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    PyObject *plain = ArrayDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyUnicode_FromFormat("%s(%R)", Py_TYPE(self)->tp_name, plain);
+    Py_DECREF(plain);
+    return result;
+}
+
+// str(arr) / print(arr) show the bare list form.
+template <typename V>
+static PyObject *ArrayDataObject_str(PyObject *selfObj) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    PyObject *plain = ArrayDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyObject_Str(plain);
+    Py_DECREF(plain);
+    return result;
+}
+
+// Iterating yields each element as arr[i] does: a scalar for a scalar array, or a
+// view (a matrix row, a pmf, a pmf_array) that borrows from and pins this object.
+template <typename V>
+static PyObject *ArrayDataObject_iter(PyObject *selfObj) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    int n = self->value->length;
+    PyObject *items = PyList_New(n);
+    if (!items)
+        return NULL;
+    try {
+        for (int i = 0; i < n; i++) {
+            PyObject *item = ArrayDataObjectTraits<V>::element((QObject *) self, self->value, i);
+            if (!item) {
+                Py_DECREF(items);
+                return NULL;
+            }
+            PyList_SET_ITEM(items, i, item);
+        }
+    } catch (CException x) {
+        Py_DECREF(items);
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+    PyObject *iterator = PyObject_GetIter(items);
+    Py_DECREF(items);
+    return iterator;
+}
+
+// == and != compare against the plain list (so arr == [1, 2, 3] holds). Ordering
+// ops return NotImplemented (a Q value has no order), so Python raises TypeError.
+template <typename V>
+static PyObject *ArrayDataObject_richcompare(PyObject *selfObj, PyObject *other, int op) {
+    if (op != Py_EQ && op != Py_NE)
+        Py_RETURN_NOTIMPLEMENTED;
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    PyObject *plain = ArrayDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    PyObject *result = PyObject_RichCompare(plain, other, op);
+    Py_DECREF(plain);
+    return result;
+}
+
+template <typename V>
+static PyObject *ArrayDataObject_to_plain(PyObject *selfObj, PyObject *ignored) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    return ArrayDataObject_toPy(self);
+}
+
+// dict(arr) and {**arr} probe for a keys() method; refuse, since a container is not a
+// mapping and dict() would otherwise silently mis-convert it. Steer to to_plain().
+static PyObject *ArrayDataObject_keys(PyObject *selfObj, PyObject *ignored) {
+    try {
+        abort("use to_plain() to convert to plain Python");
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// __array__ lets numpy build an array via np.array(x): it returns
+// numpy.array(self.to_plain(), dtype). numpy is imported lazily; it is
+// necessarily already loaded, since numpy is the caller, so the module keeps
+// no build- or import-time dependency on it. Only the scalar array and matrix
+// types bind this template as their __array__; the pmf containers bind
+// PmfDataObject_array instead, since they hold distributions, not array-like data.
+template <typename V>
+static PyObject *ArrayDataObject_array(PyObject *selfObj, PyObject *args, PyObject *kwds) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    try {
+        PyObject *dtype = Py_None;
+        PyObject *copy = Py_None;
+        static const char *kwlist[] = { "dtype", "copy", NULL };
+        if (!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", (char **) kwlist, &dtype, &copy))
+            return NULL;
+        // numpy passes copy=False to ask for a no-copy view; a fresh list is always
+        // materialized here, so a copy is unavoidable; report that, as numpy expects.
+        if (copy == Py_False)
+            abort("cannot convert to a numpy array without copying");
+        PyObject *plain = ArrayDataObject_toPy(self);
+        if (!plain)
+            return NULL;
+        PyObject *numpy = PyImport_ImportModule("numpy");
+        if (!numpy) {
+            Py_DECREF(plain);
+            return NULL;
+        }
+        PyObject *result = PyObject_CallMethod(numpy, "array", "OO", plain, dtype);
+        Py_DECREF(numpy);
+        Py_DECREF(plain);
+        return result;
+    } catch (CException x) {
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// __reduce__ lets pickle, copy.copy and copy.deepcopy round-trip, matching a
+// plain list (which supports all three). Reconstruct by calling the type on the
+// materialized value, type(self)(plain), which routes through ArrayDataObject_new
+// -> ArrayDataObjectTraits<V>::fromPy. Works cross-module too: the type pickles by
+// reference as "<q_module>.<type>" (its tp_name), importable as the module attribute.
+template <typename V>
+static PyObject *ArrayDataObject_reduce(PyObject *selfObj, PyObject *ignored) {
+    ArrayDataObject<V> *self = (ArrayDataObject<V> *) selfObj;
+    PyObject *plain = ArrayDataObject_toPy(self);
+    if (!plain)
+        return NULL;
+    // (type(self), (plain,)): O adds a reference to the type, N steals ours to plain.
+    return Py_BuildValue("(O(N))", (PyObject *) Py_TYPE(self), plain);
+}
+
+// Construct from a plain list, or copy another object of the same type. These
+// values are immutable, so the value is built here in tp_new and never changes.
+template <typename V>
+static PyObject *ArrayDataObject_new(PyTypeObject *type, PyObject *args, PyObject *kwds) {
+    ArrayDataObject<V> *self = NULL;
+    try {
+        if (kwds && PyDict_Size(kwds))
+            abort("this type takes no keyword arguments");
+        PyObject *arg;
+        if (!PyArg_ParseTuple(args, "O", &arg))
+            return NULL;
+        // A source of the same type lives in a different arena, so it stays valid
+        // while this fresh object's arena is populated below.
+        V *source = NULL;
+        if (PyObject_TypeCheck(arg, type))
+            source = ((ArrayDataObject<V> *) arg)->value;
+        self = (ArrayDataObject<V> *) type->tp_alloc(type, 0);
+        if (!self)
+            return NULL;
+        self->value = source ? ArrayDataObjectTraits<V>::copy((QObject *) self, source)
+                             : ArrayDataObjectTraits<V>::fromPy((QObject *) self, arg);
+        return (PyObject *) self;
+    } catch (CException x) {
+        Py_XDECREF(self);
+        PyErr_SetString(PException, x.message);
+        return NULL;
+    }
+}
+
+// Outbound public boundary (BARE -> DATAOBJECT): function results and public-variable
+// reads. Wrap an engine value in a fresh, Python-owned object (a copy into the
+// object's own arena). Counterpart to Xxx_in; both always copy.
+template <typename V>
+static PyObject *ArrayDataObject_out(PyTypeObject *type, QObject *sourceObj, V *value) {
+    ArrayDataObject<V> *obj = (ArrayDataObject<V> *) type->tp_alloc(type, 0);
+    if (!obj)
+        abort("Out of memory");
+    try {
+        obj->value = ArrayDataObjectTraits<V>::copy((QObject *) obj, value);
+    } catch (...) {
+        Py_DECREF(obj);
+        throw;
+    }
+    return (PyObject *) obj;
+}
+
+// Inbound public boundary (DATAOBJECT|PY -> BARE): function arguments and
+// public-variable writes. Copy an incoming object (or plain list) into the engine
+// as its own value. Counterpart to Xxx_out; both always copy.
+template <typename V>
+static V *ArrayDataObject_in(PyTypeObject *type, QObject *engine, PyObject *pyObj) {
+    // This module's container, or another module's of the same data type + Q_ABI:
+    // identical layout, so read its value and copy it into the engine's arena.
+    if (!PyObject_TypeCheck(pyObj, type)) {
+        if (!isMatchingDataObject(pyObj, type))
+            return ArrayDataObjectTraits<V>::fromPy(engine, pyObj);
+    }
+    V *v = ((ArrayDataObject<V> *) pyObj)->value;
+    if (!v)
+        abort("value is not initialized");
+    return ArrayDataObjectTraits<V>::copy(engine, v);
+}
+
+// A container-element view: borrow value in place (no copy) and pin the owner
+// with a reference so the borrowed buffer outlives the view. Used for matrix
+// rows and pmf-container elements, which are objects; scalar elements are
+// returned by value and need none of this.
+template <typename V>
+static PyObject *ArrayDataObject_view(PyTypeObject *type, PyObject *owner, V *value) {
+    ArrayDataObject<V> *obj = (ArrayDataObject<V> *) type->tp_alloc(type, 0);
+    if (!obj)
+        abort("Out of memory");
+    owner = rootOwner(owner);
+    Py_INCREF(owner);
+    obj->owner = owner;
+    obj->value = value;
+    return (PyObject *) obj;
+}
+
+// The following four definitions back qualifier_shape for pmf_array and pmf_matrix;
+// the numeric containers have no qualifier and use getset = 0.
+static PyObject *PmfArrayDataObject_get_qualifier(PyObject *selfObj, void *closure) {
+    ArrayDataObject<PmfArray> *self = (ArrayDataObject<PmfArray> *) selfObj;
+    if (self->value->length == 0)
+        Py_RETURN_NONE;                    // defensive: these containers are never empty
+    return pmfQualifierToPy(self->value->elements[0]);
+}
+
+static PyGetSetDef PmfArrayDataObject_getset[] = {
+    { "qualifier_shape", PmfArrayDataObject_get_qualifier, NULL,
+      "The structural qualifier of the pmfs in this array; variables appear as '?'.", NULL },
+    { NULL }
+};
+
+static PyObject *PmfMatrixDataObject_get_qualifier(PyObject *selfObj, void *closure) {
+    ArrayDataObject<PmfMatrix> *self = (ArrayDataObject<PmfMatrix> *) selfObj;
+    if (self->value->length == 0 || self->value->elements[0]->length == 0)
+        Py_RETURN_NONE;                    // defensive: these containers are never empty
+    return pmfQualifierToPy(self->value->elements[0]->elements[0]);
+}
+
+static PyGetSetDef PmfMatrixDataObject_getset[] = {
+    { "qualifier_shape", PmfMatrixDataObject_get_qualifier, NULL,
+      "The structural qualifier of the pmfs in this matrix; variables appear as '?'.", NULL },
+    { NULL }
+};

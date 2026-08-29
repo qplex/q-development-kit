@@ -5,7 +5,7 @@ PyObject *_@OBJ_@NAME_Py(PyObject *pyObj, PyObject *args) {
             throw CException("Expected @NUM_PARAMS parameters");
         @IF-LOG(pushLineNumber("Py    ");
         @)@REPEAT(
-        @CTYPE arg@INDEX = @XTYPE_fromPy((QObject *) self, PyTuple_GET_ITEM(args, @INDEX));
+        @CTYPE arg@INDEX = @ARG_CONVERT((QObject *) self, PyTuple_GET_ITEM(args, @INDEX));
         @)
  		_@OBJ_@NAME(self@ALL_ARGS);
 		if (self->isMemModified)

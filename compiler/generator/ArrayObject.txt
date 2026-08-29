@@ -1,0 +1,53 @@
+// @STEM
+template <>
+struct ArrayDataObjectTraits<@V> {
+    static PyObject *toPy(QObject *o, @V *v) { return @V_toPy(o, v); }
+    static @V *fromPy(QObject *o, PyObject *p) { return @V_fromPy(o, p); }
+    static @V *copy(QObject *d, @V *s) { return copy@V(d, s); }
+    static PyObject *element(QObject *o, @V *v, int i) { return @ELEMENT; }
+};
+static PyMappingMethods @STEM_as_mapping = {
+    (lenfunc) ArrayDataObject_length<@V>,
+    (binaryfunc) ArrayDataObject_subscript<@V>,
+    0,
+};
+static PyMethodDef @STEM_methods[] = {
+    { "to_plain", ArrayDataObject_to_plain<@V>, METH_NOARGS, NULL },
+    { "keys", ArrayDataObject_keys, METH_NOARGS, NULL },
+    { "__reduce__", ArrayDataObject_reduce<@V>, METH_NOARGS, NULL },
+    { "__array__", (PyCFunction) @ARRAY_METHOD, METH_VARARGS | METH_KEYWORDS, NULL },
+    { NULL }
+};
+static PyMemberDef @STEM_members[] = {
+    { "memory_use", T_ULONGLONG, offsetof(ArrayDataObject<@V>, qobject.currentMemoryUse), READONLY, NULL },
+    { NULL }
+};
+static PyTypeObject @STEM_Type = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    "@PYNAME",
+    sizeof(ArrayDataObject<@V>),
+    0,
+    (destructor) ArrayDataObject_dealloc<@V>,
+    0, 0, 0, 0,
+    (reprfunc) ArrayDataObject_repr<@V>,
+    0, 0,
+    &@STEM_as_mapping,
+    PyObject_HashNotImplemented,
+    0,
+    (reprfunc) ArrayDataObject_str<@V>,
+    0, 0, 0,
+    Py_TPFLAGS_DEFAULT,
+    "A Q container value; a read-only object you index, slice, and iterate.",
+    0, 0,
+    (richcmpfunc) ArrayDataObject_richcompare<@V>,
+    0,
+    (getiterfunc) ArrayDataObject_iter<@V>,
+    0,
+    @STEM_methods,
+    @STEM_members,
+    @GETSET,
+    0, 0, 0, 0, 0, 0, 0,
+    ArrayDataObject_new<@V>,
+};
+PyObject *@V_out(QObject *o, @V *v) { return ArrayDataObject_out<@V>(&@STEM_Type, o, v); }
+@V *@V_in(QObject *o, PyObject *p) { return ArrayDataObject_in<@V>(&@STEM_Type, o, p); }

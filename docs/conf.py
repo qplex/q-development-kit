@@ -31,9 +31,7 @@ html_show_sourcelink = False
 latex_engine = 'xelatex'
 latex_toplevel_sectioning = 'section'
 latex_elements = {
-'makeindex': '',
-'printindex': '',
 'preamble': r'\counterwithout{section}{chapter} \setcounter{tocdepth}{2} \setcounter{secnumdepth}{3}',
-} 
+}
 
 

@@ -54,6 +54,11 @@ algorithmically-specified functions of random variables of known pmfs.
 
 Getting started with Q
 -------------------------
+In this section we use the Q compiler to turn the convolution example above into
+a Python extension module named ``qdemo``. The module will contain the class ``Calculator``,
+whose ``convolution`` method returns the pmf of the sum of two independent random variables.
+We then import ``qdemo`` and call ``convolution`` from Python.
+
 You can execute Q programs on Google Colab or on your local machine.
 You don't need to install anything on your local machine when you use Colab.
 
@@ -88,8 +93,8 @@ and executing the cell:
 ::
 
        from qcompile import QModule
-       q_module = QModule('qtest')
-       q_module.add_q_class('Convolution', q_source)
+       q_module = QModule('qdemo')
+       q_module.add_q_class('Calculator', q_source)
        q_module.build()
 
 You can alternatively upload Q files via Colab's Files pane and pass them to the constructor,
@@ -97,28 +102,36 @@ in which case class names are derived from the filenames:
 
 ::
 
-       q_module = QModule('qtest', q_filenames=['Convolution.q'])
+       q_module = QModule('qdemo', q_filenames=['Calculator.q'])
        q_module.build()
 
 **Step 5.** Import and use the extension module by copying the following into the next cell of your
-notebook and executing the cell. Note that a compiled module can be imported only once per runtime:
-if you change the Q source and rebuild, restart the runtime before re-importing.
+notebook and executing the cell:
 
 ::
 
-       import qtest
-       engine = qtest.Convolution()
+       import qdemo
+       calc = qdemo.Calculator()
        p1 = {0:0.1, 1:0.9}
        p2 = {1:0.5, 2:0.5}
-       print(engine.convolution(p1, p2))
+       calc.convolution(p1, p2)
 
 You will receive the following output:
 
 ::
 
-       {1: 0.05, 2: 0.5, 3: 0.45}
+       qdemo.pmf({1: 0.05, 2: 0.5, 3: 0.45})
+
+The result is a ``qdemo.pmf`` object, the distribution Q hands back. It is its
+own read-only type: index it with an outcome to get that outcome's probability,
+iterate it, or call ``.to_plain()`` on it. It displays as ``qdemo.pmf({...})``
+rather than a bare dict. Distributions can also be passed *in* as plain dictionaries,
+as ``p1`` and ``p2`` are here. See `Pmf data objects`_ for the full interface.
 
 Congratulations. You have now written and executed a Q program on Google Colab!
+
+Note that a compiled module can be imported only once per Colab runtime:
+if you change the Q source and rebuild, restart the runtime before re-importing.
 
 Using Q on a local machine
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -133,7 +146,7 @@ First, make sure the following is installed on your computer:
 **Step 1.** Create a temporary directory (aka folder).
 
 **Step 2.** Save the five-line convolution program at the top of this
-document as ``Convolution.q``.
+document as ``Calculator.q``.
 
 **Step 3.** Copy the following files from the Q distribution zipfile to
 this directory: ``QCompiler.jar``, ``qcompile.py``.
@@ -142,23 +155,23 @@ this directory: ``QCompiler.jar``, ``qcompile.py``.
 
 ::
 
-       python3 qcompile.py qtest Convolution.q 
+       python3 qcompile.py qdemo Calculator.q
 
 **Step 5.** Now enter Python and execute the following:
 
 ::
 
-       import qtest
-       engine = qtest.Convolution()
+       import qdemo
+       calc = qdemo.Calculator()
        p1 = {0:0.1, 1:0.9}
        p2 = {1:0.5, 2:0.5}
-       print(engine.convolution(p1, p2))
+       calc.convolution(p1, p2)
 
-You will receive the following output:
+You will receive the following output (a ``qdemo.pmf`` object, as before):
 
 ::
 
-       {1: 0.05, 2: 0.5, 3: 0.45}
+       qdemo.pmf({1: 0.05, 2: 0.5, 3: 0.45})
 
 Congratulations. You have now written and executed a Q program on a local machine!
 
@@ -170,51 +183,62 @@ Two features set Q apart from other programming languages: Pmf objects
 and sampling functions. This section provides a high-level overview.
 Details may be found in the Technical Reference (Section 4, below).
 
+.. index:: pmf
+
 Pmfs
 ~~~~~~~~
 
 Q natively supports three kinds of pmf objects: Simple, Joint and
 Compound.
 
+.. index:: pmf; simple
+
 A **simple pmf** stores a distribution over a finite set of nonnegative
-integers. Its type is most commonly expressed as Pmf. Its value can be created
+integers. Its type is most commonly expressed as ``Pmf``. Its value can be created
 in a number of ways:
 
--  By calling a sampling function.
--  By calling a built-in function (such as ``bernoulli`` or
-   ``binomial``).
+-  By calling a sampling function (see Section 3.2).
 -  By specifying a literal value in an initializer (see Section 4.4.2).
--  By passing a value from Python.
+-  By calling a built-in function such as ``bernoulli`` or ``binomial`` (see Section 4.8.3).
+-  By passing a value from Python (see Section 6).
+
+.. index:: pmf; joint
 
 A **joint pmf** stores a distribution of two or more random variables.
-Its type is most commonly expressed as ``Pmf{A,B,C}`` where ``A``,
-``B``, ``C`` are the names of the random variables. (If names are not
-needed, they may be replaced with the wildcard symbol ``?``) Its value
+Its type is written by listing the random variables inside braces. For
+example, a distribution of three random variables has type ``Pmf{A,B,C}``,
+where ``A``, ``B``, ``C`` are the variable names. (If names are not
+needed, they may be replaced with the wildcard symbol ``?``.) Its value
 can be created in a number of ways:
 
--  By calling a sampling function.
--  By calling a built-in function (such as ``multinomial``).
--  By specifying a literal value in an initializer.
--  By passing a value from Python.
+-  By calling a sampling function (see Section 3.2).
+-  By specifying a literal value in an initializer (see Section 4.4.2).
+-  By calling a built-in function such as ``multinomial`` (see Section 4.8.3).
+-  By passing a value from Python (see Section 6).
 
-If p is a pmf of type ``Pmf{A,B,C}`` then ``p{A}`` extracts the marginal
+.. index::
+   single: marginal
+   single: conditional
+   single: extraction
+
+If ``p`` is a pmf of type ``Pmf{A,B,C}`` then ``p{A}`` extracts the marginal
 distribution of ``A`` from ``p``. Likewise, ``p{B,C|A=2}`` expresses the
 conditional joint distribution of ``B`` and ``C`` given ``A=2``.
 Note that these are extractions, not calculations, because ``p`` is stored
-internally as the marginal of its first component together with a chain of
-conditional distributions (the conditional of each component given all
-earlier components).
+internally as the marginal of its first variable together with a chain of
+conditional distributions (the conditional of each variable given all
+earlier variables).
 
 This storage structure determines what can be extracted. A valid extraction
-selects a contiguous run of one or more components. Every component
+selects a contiguous run of one or more variables. Every variable
 preceding the run must be fixed to a value by the conditions;
-components after the run are not included. If the run starts at the
-first component, the result is a marginal pmf (``p{A}``, ``p{A,B}``);
+variables after the run are not included. If the run starts at the
+first variable, the result is a marginal pmf (``p{A}``, ``p{A,B}``);
 otherwise it is a conditional pmf (``p{B|A=a}``, ``p{B,C|A=a}``, ``p{C|A=a,B=b}``).
 For ``Pmf{A,B,C}``, these are the only valid forms.
-An extraction that leaves a preceding component free would require summing over it,
+An extraction that leaves a preceding variable free would require summing over it,
 which is a calculation rather than an extraction, and is rejected. In particular,
-``p{B}`` and ``p{C}`` (a later component with nothing fixed) and ``p{C|A=a}``
+``p{B}`` and ``p{C}`` (a later variable with nothing fixed) and ``p{C|A=a}``
 (which fixes ``A`` but skips ``B``) are invalid. Each can instead be obtained
 from a sampling function. For efficiency, that function should extract the
 smallest valid pmf covering the required components and sample from that,
@@ -222,14 +246,31 @@ rather than sampling the full joint pmf. For example, to obtain ``p{B}`` from
 ``Pmf{A,B,C}``, extract ``p{A,B}`` and sample from it; sampling the full
 joint pmf ``p{A,B,C}`` would enumerate ``C`` needlessly.
 
+.. index:: pmf; compound
+
 A **compound pmf** holds a collection of two or more simple and/or joint
 pmfs. Its purpose is to allow a sampling function to create more than
-one distribution. Its type is expressed in the form
-``Pmf{(A,B,C),(X)}``. The extraction rules above apply to each component.
+one distribution. As an example, a compound of a joint pmf of three
+random variables and a simple pmf of a different variable has type
+``Pmf{(A,B,C),(X)}``. The extraction rules above apply within each component.
 A simple component such as ``(X)`` has only one variable, so the only
 extraction is ``p{X}``; a joint component such as ``(A,B,C)`` allows for
 the full range of extractions, including marginals (``p{A}``, ``p{A,B}``,
 ``p{A,B,C}``) and conditionals (``p{B|A=a}``, ``p{B,C|A=a}``, ``p{C|A=a,B=b}``).
+
+The variables of a compound's components need not be disjoint; they may
+overlap, and frequently do. This is often the very purpose of using a compound.
+A later component of a joint cannot be extracted on its own; for instance,
+``p{B}`` from ``Pmf{A,B}`` would require summing over ``A`` and is rejected
+(see above). A compound is the natural way to carry such a distribution
+alongside the joint it comes from. For example, ``Pmf{(A,B),(B)}`` pairs the
+joint of ``A`` and ``B`` with the marginal of ``B``, making the otherwise
+inaccessible ``p{B}`` available for direct extraction (so without requiring
+sampling). Where components overlap, they refer to the same random variables
+and are therefore mutually consistent. A wildcard ``?`` never overlaps any
+random variable.
+
+.. index:: sampling function
 
 Sampling functions
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -242,7 +283,7 @@ function. If its body does not contain a sampling operator, then it is a
 regular function.
 
 Because a sampling function creates a pmf, its return type is
-necessarily a Pmf. The return statements in a sampling function
+necessarily a ``Pmf``. The return statements in a sampling function
 contribute to this pmf and terminate a sampling branch of the
 experiment, but do not terminate execution of the function.
 
@@ -279,7 +320,7 @@ a regular function, like this:
 But this quickly becomes unworkable as the complexity of the
 calculations increases. The calculations required by QPLEX are quite
 complex, and they are more naturally expressed using sampling functions.
-Now, you are probably wondering, but how does a sampling function
+Now, you are probably wondering: how does a sampling function
 calculation actually work? Essentially, it enumerates all the outcomes
 in the sample space, and sums the probabilities of outcomes that yield
 each output value. Here is pseudo-code for the two-coin example above:
@@ -307,7 +348,7 @@ a loop, to be iterated over the support of a given pmf.
 
 If you wish to go into more detail, you can examine the C++ file
 generated by the Q compiler. It’s a bit verbose, but all of the details
-are spelled out. Also, see Section 7.
+are spelled out. Also, see Section 8.
 
 But wait, there’s more!
 
@@ -330,7 +371,7 @@ binomial restricted to its tail:
            }
        }
 
-And sampling functions can generate a joint distributions of many random
+And sampling functions can generate a joint distribution of many random
 variables. Or many distributions from one experiment.
 
 The following code generates a compound pmf that contains the marginals
@@ -388,12 +429,29 @@ in braces next to pmf types, names, and functions. Like this:
 ``Pmf{Z, L}``. Examples: ``Z``, ``L``, ``A_VERY_LONG_NAME``,
 ``NUMBER_9``, ``_``.
 
+.. index::
+   single: type; int
+   single: type; real
+   single: type; boolean
+   single: type; void
+   single: type; token
+   single: type; interface
+   single: type; Pmf
+   single: type; IntArray
+   single: type; RealArray
+   single: type; BooleanArray
+   single: type; IntMatrix
+   single: type; RealMatrix
+   single: type; BooleanMatrix
+   single: type; PmfArray
+   single: type; PmfMatrix
+
 Types
 ~~~~~~~~~
 
-``int`` represents a 32-bit signed integer
+``int`` represents a 32-bit signed integer.
 
-``real`` represents a 64-bit double-precision real number
+``real`` represents a 64-bit double-precision real number.
 
 ``boolean`` represents the values ``true`` or ``false``.
 
@@ -407,8 +465,8 @@ interfaces, see Section 4.8.9.
 
 Q also supports the following object types: ``IntArray``, ``RealArray``,
 ``BooleanArray``, ``IntMatrix``, ``RealMatrix``, ``BooleanMatrix``,
-``Pmf``, ``PmfArray``, ``PmfMatrix``, ``InterfaceArray`` and
-``InterfaceMatrix``.
+``InterfaceArray``, ``InterfaceMatrix``, ``Pmf``, ``PmfArray`` and
+``PmfMatrix``.
 
 You cannot create custom object types in Q source.
 
@@ -435,6 +493,8 @@ Examples: ``0.``, ``-1.0``, ``3.1415``, ``9.1e-31``.
 
 ``boolean`` literals are ``true`` and ``false``.
 
+.. index:: initializer
+
 Initializers
 ^^^^^^^^^^^^^
 
@@ -442,29 +502,45 @@ Initializers allow you to specify an object value in Q source.
 Initializers may appear only on the right-hand-side of an assignment
 statement or in a return statement.
 
-Array initializers are comma-separated lists enclosed in square
-brackets. Example: ``[1,2,3]``.
+Scalar array initializers (``IntArray``, ``RealArray``, ``BooleanArray``)
+are comma-separated elements enclosed in square brackets. Example: ``[1,2,3]``.
 
-Matrix initializers are arrays of arrays. Example:
-``[[1,2,3], [4,5,6]]``. Note that the rows of a matrix need not have the
-same length. Example: ``[[1],[1,2],[1,2,3]]``.
+Scalar matrix initializers (``IntMatrix``, ``RealMatrix``, ``BooleanMatrix``)
+are arrays of arrays. Example: ``[[1,2,3], [4,5,6]]``. Note that the rows
+of a matrix need not have the same length. Example: ``[[1],[1,2],[1,2,3]]``.
 
-Pmf initializers are comma-separated value:probability pairs, enclosed
+Simple pmf initializers are comma-separated outcome:probability pairs, enclosed
 in braces. Example: ``{1:0.1, 2:0.2, 3:0.3, 26:0.4}``.
 
-A joint pmf initializer contains a tuple of sample values instead.
+A joint pmf initializer contains a tuple of outcomes instead.
 Example: ``{(0,0):0.1, (1,1):0.2, (2,0):0.3, (2,1):0.4}``.
 
 A compound pmf initializer is specified as a tuple of simple or joint
-pmfs. Example: ``({(0,0):0.1, (1,1):0.9}, {1:0.3, 2:0.7})``.
+pmfs. Example: ``({(0,0):0.1, (1,1):0.9}, {0:0.1, 1:0.9})``.
+Overlapping components must agree on the variables they share,
+so this example is a valid ``Pmf{(A,B),(B)}``.
+Every pair of overlapping components is checked. Wildcard
+components (``?``) never overlap: a type such as
+``Pmf{(?,?),(?)}`` imposes no consistency between its components. This is a
+pairwise consistency check, not a feasibility test: it confirms that overlapping
+components agree on the marginals they share, but it does not verify that all of
+them could arise together from a single underlying joint; for three or more
+mutually overlapping components, pairwise agreement does not by itself guarantee
+that such a joint exists.
 
-In pmf initializers, samples are not required to be consecutive or to
-appear in any particular sequence. The probabilities of duplicate sample
-values are summed. (This differs from Python, where duplicate entries in
+Pmf array and pmf matrix initializers (``PmfArray``, ``PmfMatrix``) are
+arrays, or arrays of arrays, of pmf initializers. Example:
+``[{0:0.1, 1:0.9}, {0:0.5, 1:0.5}]``. Every pmf in the array or matrix must have
+the same shape (the same ``{...}`` structure); mixing shapes, such as a simple
+pmf with a joint pmf, is rejected.
+
+In simple and joint pmf initializers, outcomes are not required to be consecutive or to
+appear in any particular sequence. The probabilities of duplicate outcomes
+are summed. (This differs from Python, where duplicate entries in
 a dictionary overwrite earlier values.) And probabilities are normalized
-so they sum to one. If the probability in a value:probability pair is
-zero or negative, the pair is ignored. If the probability in a
-value:probability pair is greater than one, it is replaced by one.
+so they sum to one. If the probability in an outcome:probability pair is
+zero or negative, the pair is ignored. If the probability in an
+outcome:probability pair is greater than one, it is replaced by one.
 
 Default values
 ^^^^^^^^^^^^^^^^^^^^
@@ -478,20 +554,20 @@ Type                     Default value
 ``int``                  ``0``
 ``real``                 ``0.0``
 ``boolean``              ``false``
-``Pmf``                  ``{0:1.0}``
-``Pmf{?,?}``             ``{(0,0):1.0}``
 ``IntArray``             ``[0]``
 ``RealArray``            ``[0.0]``
 ``BooleanArray``         ``[false]``
-``PmfArray``             ``[{0:1.0}]``
-``PmfArray{?,?}``        ``[{(0,0):1.0}]``
 ``IntMatrix``            ``[[0]]``
 ``RealMatrix``           ``[[0.0]]``
 ``BooleanMatrix``        ``[[false]]``
+``Pmf``                  ``{0:1.0}``
+``Pmf{?,?}``             ``{(0,0):1.0}``
+``Pmf{(A,B),(C)}``       ``({(0,0):1.0},{0:1.0})``
+``PmfArray``             ``[{0:1.0}]``
+``PmfArray{?,?}``        ``[{(0,0):1.0}]``
+``PmfArray{(A,B),(C)}``  ``[({(0,0):1.0},{0:1.0})]``
 ``PmfMatrix``            ``[[{0:1.0}]]``
 ``PmfMatrix{?,?}``       ``[[{(0,0):1.0}]]``
-``Pmf{(A,B),(C)}``       ``({(0,0):1.0},{0:1.0})``
-``PmfArray{(A,B),(C)}``  ``[({(0,0):1.0},{0:1.0})]``
 ``PmfMatrix{(A,B),(C)}`` ``[[({(0,0):1.0},{0:1.0})]]``
 ======================== =============================
 
@@ -570,6 +646,10 @@ to the left of the equal sign:
 
 The probabilities in a pmf cannot be modified.
 
+.. index::
+   single: attribute; minValue
+   single: attribute; maxValue
+
 Attributes
 ~~~~~~~~~~~~~
 
@@ -581,6 +661,8 @@ An attribute is a property of an object. Q supports three attributes:
 
 Statements
 ~~~~~~~~~~~~~~~
+
+.. index:: statement; declaration
 
 Declaration statement
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -631,6 +713,8 @@ or
                int i;
            …
 
+.. index:: statement; assignment
+
 Assignment statement
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -662,6 +746,8 @@ Tokens are assigned a nonnegative integer value when declared:
 
 Token declarations must be global.
 
+.. index:: statement; sampling
+
 Sampling statement
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -678,10 +764,14 @@ necessarily of type integer. Furthermore, they are of a special integer
 type that cannot be modified (in C, const int). For these reasons, it is
 not permitted to place ``int`` at the start of a sampling statement.
 
+.. index:: statement; void
+
 Void statement
 ^^^^^^^^^^^^^^^^^^^^^
 
 This statement contains a call to a function that returns no value.
+
+.. index:: statement; for-loop
 
 For-loop
 ^^^^^^^^^^^^^^
@@ -693,9 +783,12 @@ In Q, the for-loop takes the following form:
        for (i = n to m) { … }
 
 where ``n`` and ``m`` are integer expressions. The iteration is from
-``n`` to ``m`` inclusive. The loop variable is implicitly declared
+``n`` to ``m`` inclusive. If ``n`` is greater than ``m``, the loop runs
+zero times. The loop variable is implicitly declared
 by the loop construct and must not be pre-declared. It is local to
 the loop scope.
+
+.. index:: statement; while-loop
 
 While-loop
 ^^^^^^^^^^^^^^^^
@@ -705,6 +798,8 @@ A while-loop repeats so long as a boolean expression is true:
 ::
 
        while (_boolean expression_) { … }
+
+.. index:: statement; if/else
 
 If / else
 ^^^^^^^^^^^^^^^
@@ -719,22 +814,32 @@ This statement takes three forms
 
        if (_boolean expression_) { … } else if …
 
+.. index:: statement; fail
+
 Fail
 ^^^^^^^^^^^^^
 
-This statement generates a runtime error. Example:
+This statement raises an error carrying the given message.
+Use it to reject a condition the function cannot proceed under,
+such as an invalid parameter. Example:
 
 ::
 
-       fail "numberOfStations must be positive";
+       if (n <= 0) {
+           fail "n must be positive";
+       }
 
-This is the only place in Q where a literal string may appear.
+A fail statement is the only place in Q where a literal string may appear.
+
+.. index:: statement; skip
 
 Skip
 ^^^^^^^^^^^
 
 The skip statement may appear in a sampling function. See discussion in
 Section 3.2.
+
+.. index:: statement; return
 
 Return
 ^^^^^^^^^^^^^
@@ -778,6 +883,18 @@ Compound pmf:
 Built-in functions
 ~~~~~~~~~~~~~~~~~~~~~~
 
+.. index::
+   single: built-in function; min
+   single: built-in function; max
+   single: built-in function; floor
+   single: built-in function; ceiling
+   single: built-in function; sqrt
+   single: built-in function; log
+   single: built-in function; exp
+   single: built-in function; pow
+   single: built-in function; computeLeftTail
+   single: built-in function; computeRightTail
+
 Arithmetic functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -809,49 +926,56 @@ Arithmetic functions
 | ``(Pmf pmf, real e)``       | ``pmf``\ {>=\ ``i``} >= ``e``            |
 +-----------------------------+------------------------------------------+
 
+.. index::
+   single: built-in function; createIntArray
+   single: built-in function; createRealArray
+   single: built-in function; createBooleanArray
+   single: built-in function; createPmfArray
+   single: built-in function; createIntMatrix
+   single: built-in function; createRealMatrix
+   single: built-in function; createBooleanMatrix
+   single: built-in function; createPmfMatrix
+   single: built-in function; createInterfaceArray
+   single: built-in function; createInterfaceMatrix
+
 Create functions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 The following functions create new instances of arrays and matrices, filled with
-the default value of their respective element types (See Section 4.4.3.)
+the default value of their respective element types (see Section 4.4.3).
 
 ::
 
        IntArray createIntArray(int)
-       
        RealArray createRealArray(int)
-
        BooleanArray createBooleanArray(int)
-
        PmfArray createPmfArray(int)
-       
        IntMatrix createIntMatrix(int, int)
-
        RealMatrix createRealMatrix(int, int)
-
        BooleanMatrix createBooleanMatrix(int, int)
-
        PmfMatrix createPmfMatrix(int, int)
-
        InterfaceArray createInterfaceArray(int)
-
        InterfaceMatrix createInterfaceMatrix(int, int)
 
 The functions ``createPmfArray``, ``createPmfMatrix``,
-``createInterfaceArray`` and ``createInterfaceMatrix`` return special
-values of indeterminate type. A type is determined when the returned
-value is assigned to a variable. Therefore, calls to these functions may
-appear only on the right-hand-side of an assignment statement. Example:
+``createInterfaceArray`` and ``createInterfaceMatrix`` do not fix the type
+of their elements: the call sets how many elements there are, but not what
+kind of pmf each one is (for pmf arrays and matrices) or the interface
+signature (for interface arrays and matrices). That element type is supplied by the
+declared type of the variable the result is assigned to. For this reason,
+calls to these functions may appear only on the right-hand side of an
+assignment statement. Example:
 
 ::
 
-       PmfArray{A,B} pmfArray = createPmfArray(42);
+       PmfArray{?,?} pmfArray = createPmfArray(42);
 
-After executing this statement, The variable ``pmfArray`` will contain
-an array of 42 elements of type ``Pmf{A,B}``, each of value
-``{(0,0):1.0}``.
+After executing this statement, the variable ``pmfArray`` will contain an
+array of 42 bivariate pmfs, each of value ``{(0,0):1.0}``.
 
 The following functions create a pmf given a RealArray or a RealMatrix:
+
+.. index:: built-in function; createPmfFromRealArray
 
 ``Pmf createPmfFromRealArray(RealArray a)``
 
@@ -864,6 +988,8 @@ and so on.
 If an element is zero or negative, it is ignored. 
 If an element is greater than one, it is replaced by one.
 Elements are normalized so they sum to one.
+
+.. index:: built-in function; createBivariatePmfFromRealMatrix
 
 ``Pmf createBivariatePmfFromRealMatrix(RealMatrix m)``
 
@@ -880,9 +1006,13 @@ Elements are normalized so they sum to one.
 Pmf statistical functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. index:: built-in function; bernoulli
+
 ``Pmf bernoulli(real p)``
 
 Returns a Bernoulli pmf with parameter p. That is, ``{0:1-p, 1:p}``.
+
+.. index:: built-in function; binomial
 
 ``Pmf binomial(int n, real p)``
 
@@ -891,17 +1021,20 @@ Returns a binomial pmf with parameters:
 -  ``n`` = the number of trials.
 -  ``p`` = the probability of success on each trial.
 
+.. index:: built-in function; multinomial
+
 ``Pmf{?,?,...} multinomial(int n, int k, Pmf p)``
 
 Returns a multinomial pmf with parameters:
 
 -  ``n`` = the number of trials.
--  ``k`` = the number of possible outcomes for each trial.
+-  ``k`` = the number of possible outcomes for each trial. Must be an integer literal.
 -  ``p`` = the pmf of outcomes.
--  ``k`` must be an integer literal.
 -  The number of question marks in the returned pmf configuration must
    equal ``k``.
 -  The pmf ``p`` can assign non-zero probabilities only to the integers 0,1,…,\ ``k``-1.
+
+.. index:: built-in function; hypergeometric
 
 ``Pmf hypergeometric(int bigN, int bigK, int n)``
 
@@ -911,41 +1044,51 @@ Returns a hypergeometric pmf with parameters:
 -  ``bigK`` = the number of marked items in the original population.
 -  ``n`` = number to pick (without replacement).
 
+.. index:: built-in function; multivariateHypergeometric
+
 ``Pmf{?,?,...} multivariateHypergeometric(int bigN, int n, int d, IntArray b)``
 
 Returns a multivariate hypergeometric pmf with parameters:
 
--  ``bigN`` = the original population size
--  ``n`` = number to pick (without replacement)
--  ``d`` = number of kinds of items
+-  ``bigN`` = the original population size.
+-  ``n`` = number to pick (without replacement).
+-  ``d`` = number of kinds of items. Must be an integer literal.
 -  ``b`` = array of original counts by kind.
--  ``d`` must be an integer literal
 -  The number of question marks in the returned pmf configuration must
-   equal ``d``
--  The length of array ``b`` must equal ``d``
+   equal ``d``.
+-  The length of array ``b`` must equal ``d``.
 -  The sum of elements in ``b`` must equal ``bigN``.
 
 Pmf address comparison
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+.. index:: built-in function; isSamePmfInstance
+
 ``boolean isSamePmfInstance(Pmf a, Pmf b)``
 
-Returns whether two pmfs occupy the same memory address. Used to
-determine whether a public Pmf variable has been changed from Python.
+Returns whether two pmfs are the same object (an identity check, not a
+value comparison). Use it to detect whether a public ``Pmf`` variable has
+been reassigned from Python.
 
 Random numbers
 ^^^^^^^^^^^^^^^^^^^^
 
+.. index:: built-in function; randomInt
+
 ``int randomInt(int n)``
 
-Generates a random integer between 0 and n-1 (inclusive).
+Generates a random integer between 0 and ``n-1`` (inclusive).
 
-``real x = randomReal()``
+.. index:: built-in function; randomReal
+
+``real randomReal()``
 
 Generates a random real between 0 and 1.
 
 Branch probability
 ^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. index:: built-in function; branchProbability
 
 ``real branchProbability()``
 
@@ -965,8 +1108,17 @@ function name, and a list of arguments (possibly empty). Example:
            return a + b; 
        }
 
+Array and matrix arguments are passed by reference: a function that
+modifies an element of an array or matrix parameter is modifying the
+caller's value. A ``Pmf`` argument is immutable, so no operation can
+change it and passing one cannot affect the caller. The pmfs held in a
+pmf array or matrix are likewise immutable: a callee can swap in a
+different pmf but cannot edit one in place.
+
 If the sampling operator (``~``) appears in the body of a declared
 function, it is considered to be a sampling function. See Section 3.2.
+
+.. index:: constructor
 
 Constructor
 ^^^^^^^^^^^^^^^^^
@@ -975,6 +1127,8 @@ The optional declared function ``init`` is called upon startup. It can
 be used to initialize global variables and takes any number of
 parameters (including none). It cannot be a public function and its 
 return type must be ``void``.
+
+.. index:: interface; declaration
 
 Interfaces
 ^^^^^^^^^^^^^^^^
@@ -1018,7 +1172,8 @@ You can then use an initializer to assign it a value:
        ha = [f,f,f];
 
 If the size of the array is not known at compile time, you can use
-createInterfaceArray to create an instance:
+``createInterfaceArray`` to create an instance. Here ``n`` is a runtime
+integer, such as a parameter of the enclosing function:
 
 ::
 
@@ -1035,12 +1190,14 @@ Additional rules
 
 **Rule 1**. The source code for an extension module must appear in a
 single text file. Why? Because multiple source files are harder to
-implement. We might add this capability later.
+implement.
+
+.. index:: recursion
 
 **Rule 2**. You cannot use a symbol until after you have declared it.
 Why? Because two-pass compilers are harder to implement. A function is
 declared only after its complete definition, so a function cannot call
-itself: recursion is not supported. We might add this capability later.
+itself: recursion is not supported.
 
 **Rule 3**. Functions and interfaces must have global scope. Why?
 Because Q is not object-oriented. C carries the same restriction.
@@ -1060,11 +1217,15 @@ declaration.
 
        public int numberOfServers = 42;
 
-Why? Because the sequence in which initial values are assigned could be
-ambiguous. However, initial values may be assigned by the constructor.
+Why? Because a declaration initializer could refer to another global, and
+Q does not define the order in which globals are initialized, so the result
+would be ambiguous. Initial values may instead be assigned by the
+constructor, where the order of assignments is explicit.
 
-**Rule 5**. The value of function parameters, samples and for-loop
-indexes must be assigned upon declaration, and cannot later be changed.
+**Rule 5**. Function parameters, sample variables and for-loop indexes are
+bound once, where they are introduced, and cannot be reassigned. A sample
+variable is introduced by the sampling statement itself, so it cannot name a
+variable that already exists.
 
 (illegal)
 
@@ -1092,41 +1253,11 @@ indexes must be assigned upon declaration, and cannot later be changed.
 
 Why? Mostly, it’s a matter of style.
 
-**Rule 6**. If a block contains a sampling statement, then the only way
-to leave the block must be through a return or skip statement.
+.. index:: block
 
-(illegal)
-
-::
-
-       int i;      
-       if (b == 1) { 
-           i ~ f;
-       } else {
-           i ~ g;  
-       }
-       return i + 1;
-
-(legal)
-
-::
-
-       if (b == 1) { 
-           i ~ f;
-           return i + 1;
-       } else {
-           i ~ g;  
-           return i + 1;
-       }
-
-Why? Because sampling statements are implemented as for-loops that
-iterate through the sample values of a pmf. Such loops cannot extend
-beyond the block in which they were created.
-
-As a consequence of this rule, for-loops in Q cannot contain sampling statements. 
-We might add this capability later.
-
-if-else statements, and may not appear elsewhere.
+**Rule 6**. A block is a sequence of statements enclosed in braces. Blocks
+must appear in function declarations, for-loops and if-else statements, and
+may not appear elsewhere.
 
 (illegal)
 
@@ -1145,26 +1276,279 @@ if-else statements, and may not appear elsewhere.
 
 Why? Mostly, it’s a matter of style.
 
+**Rule 7**. If a block contains a sampling statement, then the only way
+to leave the block must be through a return or skip statement.
 
-Accessing Q from Python
+(illegal)
+
+::
+
+       int i;
+       if (b == 1) {
+           i ~ f;
+       } else {
+           i ~ g;
+       }
+       return i + 1;
+
+(legal)
+
+::
+
+       if (b == 1) {
+           i ~ f;
+           return i + 1;
+       } else {
+           i ~ g;
+           return i + 1;
+       }
+
+Why? Because sampling statements are implemented as for-loops that
+iterate through the outcomes of a pmf. Such loops cannot extend
+beyond the block in which they were created.
+
+As a consequence of this rule, for-loops in Q cannot contain sampling statements.
+
+.. index::
+   single: data object
+   single: data object; to_plain
+   single: data object; qualifier_shape
+   single: data object; memory_use
+
+Data objects in Q modules
+---------------------------
+
+A data object is a Python object that holds a Q value.
+Each data object is read-only, reads like the dict, list or tuple
+it represents, and provides a ``to_plain()`` method that returns a plain Python copy.
+
+The type of the data object comes from the module generated by the Q compiler.
+For instance, if your Q module is called ``qdemo``, then
+a Q ``IntMatrix`` value produced by that module
+arrives as a ``qdemo.int_matrix`` object in Python.
+
+Only the nine Q types in the table below cross between Q and Python as data objects.
+In this table and throughout, we use ``qdemo`` to stand for the Q module's name and
+assume it is imported via ``import qdemo``.
+The scalar types ``int``, ``real`` and ``boolean`` cross as
+ordinary Python numbers and booleans.
+
+===================  ===========================
+Q type               Python type in ``qdemo``
+===================  ===========================
+``IntArray``         ``qdemo.int_array``
+``RealArray``        ``qdemo.real_array``
+``BooleanArray``     ``qdemo.boolean_array``
+``IntMatrix``        ``qdemo.int_matrix``
+``RealMatrix``       ``qdemo.real_matrix``
+``BooleanMatrix``    ``qdemo.boolean_matrix``
+``Pmf``              ``qdemo.pmf``
+``PmfArray``         ``qdemo.pmf_array``
+``PmfMatrix``        ``qdemo.pmf_matrix``
+===================  ===========================
+
+A data object keeps its Q value in C++, letting it move from one Q
+calculation to the next without the overhead of converting to and from a
+plain Python form. It becomes a plain Python value only when you convert
+it. The mechanics of calling Q from Python are covered in Section 6; as a
+preview, the following Python example passes a pmf through the same Q
+function ``f`` 100 times, and the value stays in C++ until the final line
+converts it:
+
+::
+
+       import qdemo
+       engine = qdemo.Engine()
+       p = qdemo.pmf({0: 1.0})   # a pmf data object
+       for k in range(100):
+           p = engine.f(p)       # each result is passed back in, staying in C++
+       d = p.to_plain()          # p is converted to a plain dict only here
+
+
+Pmf data objects
+~~~~~~~~~~~~~~~~~~~~~~~
+
+When a public Q function returns a ``Pmf`` or a public ``Pmf`` variable is read from Q,
+the value comes back as a ``qdemo.pmf`` data object. You
+can also build one yourself, using the same dict and tuple forms as a Q pmf initializer
+(Section 4.4.2), but in Python duplicate keys in a dictionary
+overwrite earlier values. As for the Q type, a pmf data object comes in three kinds
+with the same Python type but differing in structure: a simple pmf over single outcomes, a joint pmf
+over tuples of outcomes, and a compound pmf that groups several component pmfs.
+The examples below use one of each, ``p``, ``j`` and ``c``:
+
+::
+
+       p = qdemo.pmf({1: 0.1, 2: 0.9})             # simple pmf
+       j = qdemo.pmf({(0, 0): 0.5, (1, 1): 0.5})   # joint pmf, bivariate
+       c = qdemo.pmf(({0: 1.0}, {5: 1.0}))         # compound pmf, type Pmf{(?),(?)}
+       type(p)                                     # <class 'qdemo.pmf'> (so are j and c)
+
+Simple and joint pmf data objects are keyed by outcome:
+
+::
+
+       p[2]               # simple pmf: probability of the outcome 2
+       j[(1, 1)]          # joint pmf: probability of the outcome tuple (1, 1)
+
+An absent (or zero-probability) outcome reads as ``0.0``;
+a negative outcome or a non-integer key raises an error because outcomes are
+nonnegative integers. In plain form, a simple or joint pmf object is a dict.
+Since a pmf data object is read-only, ``p[k] = v`` raises ``TypeError``.
+
+Simple and joint pmf data objects also
+support membership, length, and iteration over outcomes:
+
+::
+
+       len(p)                  # number of outcomes with nonzero probability
+       2 in p
+       for outcome in p: ...   # iterate the outcomes
+
+A compound pmf data object is different from simple and joint pmf data objects
+since it is a collection of its component simple/joint pmfs.
+Because iterating a pmf enumerates its outcomes and a compound has none of its
+own, a compound is not iterable; you reach its components by position instead.
+Index it by position to get a component, which is
+itself a pmf data object: ``c[0]`` is the first component and ``c[-1]`` the last.
+A slice ``c[1:3]`` gives a smaller compound pmf (or a single component if it
+selects one), and ``len(c)`` is the number of components.
+In Q you reach a compound's components through the variable names in
+its type, but in Python you reach them by position.
+In plain form, a compound pmf object is a tuple of dicts.
+
+A pmf data object can be compared with ``==`` and ``!=``:
+
+::
+
+       p == {1: 0.2, 2: 0.8}    # False
+       p != {1: 0.5, 2: 0.5}    # True
+
+.. index:: pickling
+
+It also supports ``copy.copy``,
+``copy.deepcopy`` and ``pickle`` (all round-trip), and ``p.to_plain()``
+returns a plain copy: a dict (for simple and joint pmfs) or a tuple (for
+compound pmfs).
+
+A pmf's Q type carries a qualifier in braces (the ``{Z, L}`` in ``Pmf{Z, L}``),
+encoding both its kind and its variables, but this works differently for data objects.
+Each data object exposes a read-only
+``qualifier_shape`` attribute: that qualifier with ``?`` in place of every
+variable name, since a runtime value records its structure but not the type-level
+names. A simple pmf has shape ``'{?}'``, a bivariate joint ``'{?,?}'``,
+and a compound gives a parenthesized group per component, such as ``'{(?,?),(?)}'``. The
+``pmf_array`` and ``pmf_matrix`` data objects expose the same attribute, reporting the
+qualifier shape of the pmfs they hold.
+
+Array and matrix data objects
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An array or matrix data object is a read-only value that you index, slice, and
+iterate like a list. In plain form, an array object is a list and a matrix
+object a list of lists.
+
+You can also build one yourself from its plain form, using the same list forms
+as a Q initializer (Section 4.4.2):
+
+::
+
+       ia = qdemo.int_array([1, 2, 3])            # from a list
+       im = qdemo.int_matrix([[1, 2], [3, 4]])    # from a list of lists
+
+When a container's elements are themselves objects (``pmf_array``,
+``pmf_matrix``, and the matrices), the list you pass may hold those elements as
+objects, as plain forms, or a mix; each element is copied in. So a ``pmf_array``
+can be built from a list of ``pmf`` objects with the same qualifier shape,
+and a matrix from a list of row objects. For example:
+
+::
+
+       qdemo.pmf_array([p, {2: 1.0}])       # a pmf object and a plain dict
+       qdemo.int_matrix([ia, [4, 5, 6]])    # an int_array row and a plain row
+
+.. index:: NumPy
+
+The scalar array and matrix data objects also convert to NumPy: ``numpy.array(a)``
+and ``numpy.asarray(a)`` copy the values into a new array, inferring the dtype or
+applying one you pass. A ragged matrix has no rectangular array form, so NumPy
+raises when you convert one. The ``pmf`` types are distributions, not numeric grids, and so
+they offer no NumPy conversion. NumPy is never required to build or use a module; this
+simply works when NumPy is installed. For example:
+
+::
+
+       numpy.array(im)      # copy a Q data object into a NumPy array
+
+Indexing follows a single rule: a scalar element is copied out as a plain
+number, and an element that is itself an object is returned as a view.
+A view shares the container's storage rather than copying, and keeps the
+container alive while it exists.
+Concretely:
+
+* a scalar array yields a plain number: ``int_array[i]`` is an ``int``,
+  ``real_array[i]`` a ``float``, ``boolean_array[i]`` a ``bool``;
+* a ``pmf_array`` yields a ``pmf``: ``pmf_array[i]`` is a ``pmf``;
+* a matrix yields its row as an object: ``int_matrix[i]`` is an ``int_array``
+  (and ``int_matrix[i][j]`` is then an ``int``), and ``pmf_matrix[i]`` is a
+  ``pmf_array``.
+
+Because these objects are read-only, that
+sharing is invisible apart from the retention; call ``.to_plain()`` on the
+element for a detached copy that no longer pins the container.
+
+::
+
+       ia[0]                # a plain int
+       ia[-1]               # a plain int, counts from the end
+       im[0]                # an int_array view into the matrix
+       im[0].to_plain()     # a detached plain list
+
+``len`` gives the number of elements, and iterating walks them, yielding the
+same views as indexing (iterating a matrix gives ``int_array`` row views, just
+as ``im[i]`` does). So ``list()`` is shallow; its elements are those views,
+whereas ``to_plain()`` converts all the way down (nested for a matrix, and a
+plain dict or tuple per element for the pmf containers).
+
+::
+
+       len(ia)
+       for row in im: ...   # each row is an int_array view
+       list(ia)             # [1, 2, 3]  (elements are plain)
+       list(im)             # [int_array, int_array]  (row views, not plain lists)
+       im.to_plain()        # [[1, 2], [3, 4]]  (fully plain, nested)
+
+``==`` and ``!=`` compare by value. These objects are read-only, so ``a[i] = x``
+raises ``TypeError``; they support ``copy.copy``, ``copy.deepcopy`` and
+``pickle`` (each round-trips to an object of the same type).
+
+::
+
+       ia == [1, 2, 3]      # True
+
+Slicing follows the same split. A slice returns an object of the same type:
+``int_array[1:3]`` is an ``int_array`` and
+``int_matrix[1:2]`` an ``int_matrix``, built directly from the container with no
+Python round-trip. A scalar array's slice is a copy; a matrix or ``pmf_array``
+slice is a view that keeps its source alive, like a row or element. An empty
+slice raises, since every container has at least one element.
+
+.. index::
+   single: engine
+   single: module
+
+Using Q from Python
 --------------------------
 
 Each Q source file defines a Python class that we call an engine. One or
 more engines may be packaged into a Python extension module when running
 the Q compiler.
+We will continue to use ``qdemo`` as the name of your module (and assume you
+have imported it) and ``Engine`` as the name of your engine.
 
 Engine names must be UpperCamelCase, with digits allowed except for the first character. 
 Module names must be lower case, with underscores and digits allowed except that the first character cannot be a digit.
 These rules are consistent with Python recommendations, but for Q, they are mandatory.
-
-In the discussion that follows, we will use ``qdemo`` as the module
-name, and ``Engine`` as the engine name.
-
-To access the module from Python,
-
-::
-
-       import qdemo
 
 To create an engine instance,
 
@@ -1175,29 +1559,72 @@ To create an engine instance,
 This constructor can take parameters if an ``init`` function was
 specified in the Q code.
 
-Public variables of the engine appear as members of the Python object
-engine:
+Public variables and functions of the engine appear as attributes and methods of the engine object.
+Q identifiers will be converted to snake case to accommodate Python naming
+conventions. For example, a Q variable called ``someVariable`` will appear
+in Python as ``some_variable``, and a Q function called ``someFunction`` will
+appear in Python as ``some_function``.
+
+You can pass a scalar directly in assignments and function arguments,
+as the matching Python type:
 
 ::
 
-       engine.x = 42
-       print(engine.x)
+       engine.i = 42             # int; rejected if outside the 32-bit signed range
+       engine.x = 4.2            # real; infinity and NaN are rejected
+       engine.b = True           # boolean; True/False in Python, true/false in Q
+       engine.some_function(42)  # int argument in Q
 
-Likewise, public tokens:
+For data objects, assignments can be either a data object or a plain Python form:
+
+::
+
+       p = qdemo.pmf({1: 0.1, 2: 0.9})
+       a = qdemo.int_array([1, 2, 3])
+       m = qdemo.int_matrix([[1, 2, 3], [4, 5, 6]])
+       engine.xs = a                                 # an int_array object ...
+       engine.xs = [1, 2, 3]                         # ... or a plain list
+       engine.m = m                                  # a matrix object ...
+       engine.m = [[1, 2, 3], [4, 5, 6]]             # ... or plain rows
+       engine.m = [a, [4, 5, 6]]                     # ... or a mix of both
+       engine.p = p                                  # a pmf object ...
+       engine.p = {1: 0.1, 2: 0.9}                   # ... or a plain dict
+
+Function arguments work similarly:
+
+::
+
+       engine.another_function(p)               # Pmf argument in Q
+
+A value is checked against the declared type as it crosses into the engine. For
+a compound pmf, that check enforces the overlapping-component agreement
+described in Section 4.4.2. Constructing a pmf data object with ``qdemo.pmf(...)``
+never rejects on its own, since a Python-built compound names no variables and
+so has nothing to check; a compound is validated only against the specific type
+it is assigned to or passed as.
+
+Data objects can also be passed to engines in another imported Q module as
+long as both modules were built with compatible versions of the QDK.
+The engine never shares storage with Python, so values are copied on the way in and
+out regardless of the form used: the ``qdemo.pmf`` object you
+hold in Python and the copy inside the engine are independent (``engine.p`` and ``p`` are distinct objects).
+Passing a data object into the engine is a fast internal copy; a plain form is converted first.
+
+In the other direction, a public function's return value and a public variable read
+come back the same way. A scalar arrives as the matching Python type, while other values
+arrive as a data object of the appropriate type:
+
+::
+
+       n = engine.i              # int
+       flag = engine.b           # bool
+       dist = engine.p           # a qdemo.pmf object
+
+Public tokens appear as attributes of your engine, each an integer constant:
 
 ::
 
        token = engine.MY_TOKEN
-
-Public functions of the engine may be similarly invoked:
-
-::
-
-       sum = engine.sum(2, 2)
-
-Q identifiers will be converted to accommodate Python naming
-conventions. For example, a Q variable called ``myVariable`` will appear
-in Python as ``my_variable``.
 
 To assign a function to an interface, enclose the (Python) name of the
 function in quotes:
@@ -1208,72 +1635,46 @@ function in quotes:
 
 You cannot call an interface directly from Python.
 
-Public variables are attributes of the engine instance, not of the
-module. Setting an attribute on the module itself is an error:
-
-::
-
-       qdemo.x = 42       # raises an AttributeError
-
 Note that you can copy an array or matrix from engine to Python, or from
 Python to engine, but you cannot change engine array or matrix elements
-individually from Python:
-
-::
-
-       engine.a[3] = 42   # no effect; no error is raised
-
-Here’s why: The array is copied from engine to Python, and an element of
-the Python array is modified, but then the Python array is discarded.
-The engine array remains unchanged. No error message will be generated.
+individually from Python.
 
 In order to track memory use, the following read-only engine attributes
-are provided: engine.current_memory_use and engine.peak_memory_use.
+are provided: ``engine.current_memory_use`` and ``engine.peak_memory_use``.
 Memory use is measured in bytes.
 
-Pmfs are constructed in Python exactly as in Q - see Section 4.4.2.
-Suppose the engine’s Q code contains the following:
-
-::
-
-       public Pmf p;
-       public Pmf{?,?} q;
-
-Then values can be assigned from Python according to:
-
-::
-
-       engine.p = {1:0.1, 2:0.2, 3:0.3, 4:0.4}
-       engine.q = {(1,7):0.1, (2,3):0.2, (3,9):0.3, (4,7):0.4}
-
-Such pmf assignments are subject to the same conventions as pmf initializers in Q source (Section 4.4.2),
-but in Python duplicate entries in a dictionary overwrite earlier values.
-
-Be aware that converting objects between Q and Python representations
-can be time-consuming. For example, a joint pmf is implemented in Q as a
-tree of one-dimensional real arrays, but is exposed to Python as a
-dictionary.
+A data object returned to Python owns its data outside any engine, so that
+memory is not reflected in an engine's counters. Each data object therefore
+carries its own read-only ``memory_use`` attribute, the number of bytes it
+holds, for example ``p.memory_use``. Data objects are read-only, so this value
+is fixed once the object exists. A view (a row of a
+matrix, an element of a ``pmf_array``, or a slice that shares its source's
+storage) borrows its parent's data rather than holding its own, so its
+``memory_use`` counts only what it owns: zero for a row or element, a small
+header for a slice.
 
 
 Q compiler implementation
 ----------------------------
 
 The Q compiler is written in Java and JavaCC. In brief, it consists of
-four packages:
+five packages:
 
 -  Package parser contains JavaCC-generated code.
 -  Package tree contains a class for every node of the parse tree.
 -  Package compiler constructs an Engine object that encapsulates each Q
    source file. This object does not take into account that it will
-   later be referred as C++ code. So it could, in principle, be used to
+   later be used to generate C++ code. So it could, in principle, be used to
    generate other code. For example, an interactive Q source debugger.
+-  Package analysis runs passes over the parse tree. It is also the intended
+   home for future optimization passes.
 -  Package generator generates the C++ code.
 
 
 Generated C++
 ----------------
 
-The generated C++ code consists of roughly 2,000 lines of boilerplate,
+The generated C++ code starts with thousands of lines of boilerplate,
 followed by a section of generated code for each Q source.
 
 The boilerplate contains, in essence, a very large number of simple
@@ -1281,11 +1682,11 @@ constructs. Here are some underlying concepts:
 
 -  A list of allocated memory blocks is created as memory is allocated
    in ``qmalloc``. When control returns to Python, memory blocks
-   referenced in global variables are flagged, and all remaining blocks
-   are freed.
+   referenced in global variables of the engine are flagged, and all
+   remaining blocks are freed.
 
 -  Sampling functions are implemented by ``Accumulator`` objects. An
-   accumulator accepts value-probability pairs, and constructs a pmf.
+   accumulator accepts value-probability pairs and constructs a pmf.
 
 For each Q source, a struct ``_enginename_object`` serves as the engine
 object exposed to Python. The struct ``QObject`` contains the part all

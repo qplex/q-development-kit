@@ -463,3 +463,24 @@ public Pmf{A,B} fH14() {
     return extractedPmf;
 }
 
+// SECTION I - Data objects
+
+public Pmf fI1(Pmf dist) {
+    x ~ dist;
+    return x + 1;
+}
+
+public Pmf{A,B} fI2(Pmf dist) {
+    x ~ dist;
+    return x, x + 1;
+}
+
+public IntArray fI3(IntArray a) {
+    return a;
+}
+
+public Pmf{(A,B),(B)} globalOverlapPmf;
+
+public void fI4(Pmf{(A,B),(B)} dist) {
+    globalOverlapPmf = dist;
+}

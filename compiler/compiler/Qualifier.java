@@ -224,6 +224,50 @@ public class Qualifier implements parser.QParserConstants, parser.QParserTreeCon
 		_simpleRVNames = a;
 	}
 
+	/**
+	 * A code-generation helper: the returned string is C source text that the
+	 * generators splice verbatim into an emitted {@code confirmCompound...} call.
+	 * It lives here, rather than in FunctionGenerator/Generator with the rest of
+	 * the string building, because the encoding is a property of the qualifier and
+	 * must be identical at both call sites (function arguments and public fields).
+	 *
+	 * For a COMPOUND qualifier, it is the trailing argument list for that call: the
+	 * component count, then for each component its variable count followed by a
+	 * variable-identity index per variable. Distinct named variables get distinct
+	 * indices and a shared name gets a shared index, so the runtime can detect
+	 * overlapping components and check that they agree; each wildcard '?' gets its
+	 * own unique index so wildcards never match. The string begins with a comma,
+	 * ready to follow the value argument.
+	 */
+	public String compoundConfirmParams() {
+		StringBuilder b = new StringBuilder();
+		b.append(",").append(_compoundRVNames.size());
+		java.util.HashMap<String, Integer> nameIndex = new java.util.HashMap<String, Integer>();
+		int nextNamed = 0;
+		int nextWildcard = 1 << 20; // beyond any realistic named-variable count
+		for (int i = 0; i < _compoundRVNames.size(); i++) {
+			ArrayList<String> component = _compoundRVNames.get(i);
+			b.append(",").append(component.size());
+			for (int j = 0; j < component.size(); j++) {
+				String name = component.get(j);
+				int index;
+				if (name == null) {
+					index = nextWildcard++;
+				} else {
+					Integer existing = nameIndex.get(name);
+					if (existing == null) {
+						index = nextNamed++;
+						nameIndex.put(name, index);
+					} else {
+						index = existing;
+					}
+				}
+				b.append(",").append(index);
+			}
+		}
+		return b.toString();
+	}
+
 	public String toString() {
 		StringBuilder b = new StringBuilder();
 		b.append("{");

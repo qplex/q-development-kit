@@ -1,5 +1,5 @@
-import testengine
-engine = testengine.TestEngine()
+import test_module
+engine = test_module.TestEngine()
 
 print()
 print("SECTION A - Global variables");
@@ -246,7 +246,53 @@ print(engine.f_h13(1))
 print(engine.f_h14())
 
 print()
-print("SECTION I - RUNTIME ERRORS")
+print("SECTION I - DATA OBJECTS")
+print()
+
+simple_pmf = test_module.pmf({0: 0.5, 2: 0.5})
+print(simple_pmf)
+print(simple_pmf[1])
+print(simple_pmf.to_plain())
+print(simple_pmf.qualifier_shape)
+print(engine.f_i1(simple_pmf))
+print(engine.f_i2(simple_pmf))
+
+int_array = test_module.int_array([1, 2, 3])
+print(int_array)
+print(int_array.to_plain())
+print(engine.f_i3(int_array))
+
+real_matrix = test_module.real_matrix([[1.0, 2.0], [3.0, 4.0]])
+print(real_matrix)
+print(real_matrix[0])
+print(real_matrix == [[1.0, 2.0], [3.0, 4.0]])
+print(real_matrix == test_module.real_matrix([[1.0, 2.0], [3.0, 4.0]]))
+print(real_matrix != [[1.0, 2.0], [3.0, 5.0]])
+rows = list(real_matrix)
+print([type(r).__name__ for r in rows])
+print([r == plain for r, plain in zip(rows, [[1.0, 2.0], [3.0, 4.0]])])
+
+simple_pmf_array = test_module.pmf_array([{0: 0.5, 1: 0.5}, {2: 1.0}])
+print(simple_pmf_array)
+print(simple_pmf_array[0])
+
+compound_pmf = test_module.pmf(({0: 1.0}, {5: 1.0}))
+print(compound_pmf)
+print(compound_pmf[0])
+print([o for o in simple_pmf])
+print(len(compound_pmf))
+
+engine.f_i4(({(0, 0): 0.5, (1, 1): 0.5}, {0: 0.5, 1: 0.5}))
+print(engine.global_overlap_pmf)
+
+try:
+    import numpy
+    print(numpy.array(real_matrix))
+except ImportError:
+    print("numpy not installed")
+
+print()
+print("SECTION J - RUNTIME ERRORS")
 print()
 
 try:
@@ -274,6 +320,26 @@ try:
 except Exception as e:
     print(e) 
 
+try:
+    simple_pmf[0] = 0.1
+except Exception as e:
+    print(e) 
+
+try:
+    real_matrix < real_matrix
+except Exception as e:
+    print(e) 
+
+try:
+    list(compound_pmf)
+except Exception as e:
+    print(e) 
+
+try:
+    engine.f_i4(({(0, 0): 0.5, (1, 1): 0.5}, {0: 0.9, 1: 0.1}))
+except Exception as e:
+    print(e) 
+
 print()
 print("MEMORY USE")
 print()
@@ -282,4 +348,3 @@ print(engine.peak_memory_use)
 
 print()
 print("DONE");
-
