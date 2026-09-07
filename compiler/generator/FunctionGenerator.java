@@ -23,6 +23,10 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 	private IndentationManager _indentationManager;
 	private Engine _engine;
 	private java.util.Set<String> _usedIndexVariableNames;
+	private java.util.Stack<String> _branchLabels;
+	private java.util.Set<String> _usedBranchLabels;
+	private int _nextBranchLabel;
+	private boolean _functionHasSkip;
 
 	/** Returns a unique index-variable name within the current function, preserving the source line as the base. */
 	private String uniqueIndexVariableName(String baseName) {
@@ -39,6 +43,10 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 	/** Generates CPP code for a function implementation. */
 	void writeFunctionImplementation(Symbol symbol) {
 		_usedIndexVariableNames = new java.util.HashSet<>();
+		_branchLabels = new java.util.Stack<>();
+		_usedBranchLabels = new java.util.HashSet<>();
+		_nextBranchLabel = 0;
+		_functionHasSkip = containsSkip(symbol._node.getChild(1).getChild(1));
 		int samplingDepth = symbol._node.getChild(1).getNode(1)._samplingDepth;
 		if (samplingDepth == 0)
 			_samplingType = SamplingType.NONE;
@@ -168,6 +176,15 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 		Generator._cSourceWriter.println("}");
 		Generator._cSourceWriter.println();
 
+	}
+
+	private boolean containsSkip(QNode node) {
+		if (node.getId() == JJTSKIPSTATEMENT)
+			return true;
+		for (int i = 0; i < node.jjtGetNumChildren(); i++)
+			if (containsSkip(node.getChild(i)))
+				return true;
+		return false;
 	}
 
 	private void writeBlock(QNode blockNode) {
@@ -370,8 +387,10 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					Generator._cSourceWriter.println(";");
 
 				} else {
+					String label = _branchLabels.peek();
+					_usedBranchLabels.add(label);
 					_indentationManager.writeIndent();
-					Generator._cSourceWriter.println("continue;");
+					Generator._cSourceWriter.println("goto " + label + ";");
 				}
 				break;
 
@@ -381,11 +400,30 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 		}
 
 		boolean b = false;
-		while (_indentationManager.peekIsSample()) {
-			b = true;
-			_indentationManager.pop();
-			_indentationManager.writeIndent();
-			Generator._cSourceWriter.println("}");
+		if (_functionHasSkip) {
+			while (_indentationManager.peekIsSampleBlock()) {
+				b = true;
+				_indentationManager.pop();
+				_indentationManager.writeIndent();
+				Generator._cSourceWriter.println("}");
+
+				String label = _branchLabels.pop();
+				if (_usedBranchLabels.remove(label)) {
+					_indentationManager.writeIndent();
+					Generator._cSourceWriter.println(label + ": ;");
+				}
+
+				_indentationManager.pop();
+				_indentationManager.writeIndent();
+				Generator._cSourceWriter.println("}");
+			}
+		} else {
+			while (_indentationManager.peekIsSample()) {
+				b = true;
+				_indentationManager.pop();
+				_indentationManager.writeIndent();
+				Generator._cSourceWriter.println("}");
+			}
 		}
 
 		if (b) {
@@ -566,6 +604,13 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 			Generator._cSourceWriter.printf("Log(\"%s%s <~ \", _%s, prob_%s);", lineNumber, sampleVariableName,
 					sampleVariableName, sampleVariableName);
 			Generator._cSourceWriter.println();
+		}
+
+		if (_functionHasSkip) {
+			_indentationManager.writeIndent();
+			Generator._cSourceWriter.println("{");
+			_indentationManager.pushSampleBlock();
+			_branchLabels.push("skip_" + _nextBranchLabel++);
 		}
 	}
 

@@ -6,13 +6,13 @@ import java.util.Stack;
 class IndentationManager {
 
 	private enum Token {
-		SAMPLE, BLOCK
+		SAMPLE, SAMPLE_BLOCK, BLOCK
 	};
 
 	private Stack<Token> _stack = new Stack<Token>();
 
 	private int _sampleCount;
-	
+
 	void pushBlock() {
 		_stack.push(Token.BLOCK);
 	}
@@ -20,6 +20,10 @@ class IndentationManager {
 	void pushSample() {
 		_stack.push(Token.SAMPLE);
 		_sampleCount++;
+	}
+
+	void pushSampleBlock() {
+		_stack.push(Token.SAMPLE_BLOCK);
 	}
 
 	void pop() {
@@ -33,6 +37,10 @@ class IndentationManager {
 
 	boolean peekIsSample() {
 		return _stack.peek() == Token.SAMPLE;
+	}
+
+	boolean peekIsSampleBlock() {
+		return _stack.peek() == Token.SAMPLE_BLOCK;
 	}
 
 	void writeIndent() {
