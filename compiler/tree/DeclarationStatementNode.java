@@ -38,6 +38,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 
 			boolean isSamplingFunction = block._samplingDepth > 0;
 			symbol._signature._isSamplingFunction = isSamplingFunction;
+			symbol._signature._isEffectful = rejectEffects(block, isSamplingFunction);
 
 			if (symbol._name.equals("init")) {
 				if (symbol._isPublic)
@@ -56,9 +57,6 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 
 			if (isSamplingFunction && symbol._signature._returnType._kind != PMF)
 				throw new CompileException("Sampling function must return Pmf", getChild(0));
-
-			if (isSamplingFunction)
-				rejectGlobalAssignments(block);
 
 			if (symbol._signature._returnType._kind != VOID)
 				if (block._returnValueNodes == null || !block._isTerminal)
@@ -160,33 +158,43 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 			throw new CompileException("Type mismatch", sourceNode);
 	}
 
-	/**
-	 * Walks a sampling function's body and rejects any assignment whose target
-	 * is a global variable. Assignments to locals, and reads of globals, are
-	 * left alone; only writes to a global-category symbol are an error.
-	 *
-	 * Both plain targets ({@code g = ...}) and indexed targets
-	 * ({@code g[i] = ...}, {@code g[i][j] = ...}) are covered, since each begins
-	 * with the global's name. The global is resolved through the symbol table:
-	 * by the time this declaration is initialized the function's locals and
-	 * parameters have left scope, so a target name that still resolves to a
-	 * GLOBAL symbol is genuinely a global. (Functions have global scope -- see
-	 * "Additional rules" in the Q Development Guide -- so a function body never
-	 * encloses another, and the walk stays within a single function.)
-	 */
-	private void rejectGlobalAssignments(QNode node) {
+	/** Returns whether node writes a global or calls an interface. */
+	private boolean rejectEffects(QNode node, boolean isSamplingFunction) {
+		boolean effectful = false;
 		if (node.getId() == JJTASSIGNMENTSTATEMENT && node.jjtGetNumChildren() > 1) {
 			Token targetToken = node.getChild(0).jjtGetFirstToken();
 			if (targetToken.kind == IDENTIFIER) {
 				Symbol targetSymbol = Engine._instance._symbolTable.get(targetToken.image);
-				if (targetSymbol != null && targetSymbol._category == Category.GLOBAL)
-					throw new CompileException(
-							"Sampling functions may not assign to global variable '" + targetToken.image + "'",
-							targetToken);
+				if (targetSymbol != null && targetSymbol._category == Category.GLOBAL) {
+					if (isSamplingFunction)
+						throw new CompileException("Sampling functions may not write global variable '"
+								+ targetToken.image + "' directly", targetToken);
+					effectful = true;
+				}
+			}
+		}
+		if (node.getId() == JJTCALL) {
+			SuffixedExpressionNode suffixed = (SuffixedExpressionNode) node.getParent();
+			int index = 0;
+			while (suffixed.getChild(index) != node)
+				index++;
+			QType targetType = suffixed._types[index - 1];
+			if (targetType._kind == INTERFACE) {
+				if (isSamplingFunction)
+					throw new CompileException("Sampling functions may not call an interface", node);
+				effectful = true;
+			} else if (targetType._kind == QType.FUNCTION_KIND
+					&& targetType._signature._isEffectful) {
+				if (isSamplingFunction)
+					throw new CompileException("Sampling functions may not call '"
+							+ suffixed.getChild(0).jjtGetFirstToken().image
+							+ "', which may write a global or call an interface", node);
+				effectful = true;
 			}
 		}
 
 		for (int childIndex = 0; childIndex < node.jjtGetNumChildren(); childIndex++)
-			rejectGlobalAssignments(node.getChild(childIndex));
+			effectful |= rejectEffects(node.getChild(childIndex), isSamplingFunction);
+		return effectful;
 	}
 }

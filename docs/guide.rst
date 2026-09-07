@@ -1309,6 +1309,16 @@ beyond the block in which they were created.
 
 As a consequence of this rule, for-loops in Q cannot contain sampling statements.
 
+**Rule 8**. A sampling function may not write a global, directly or through any
+function it calls. It may not call an interface, directly or through any function
+it calls.
+
+Why? Sampling statements run their following code once for every outcome in a pmf's
+support. A global write would therefore run once per outcome, and its final value
+could depend on the order in which those outcomes are enumerated. Reading globals is
+permitted. An interface call is excluded because the interface can hold an arbitrary
+function, whose behavior the compiler cannot guarantee.
+
 .. index::
    single: data object
    single: data object; to_plain
@@ -1694,4 +1704,3 @@ engine objects have in common. This includes the members required for
 memory management. Functions such as ``binomial``, which perform memory
 allocation, must be passed a ``QObject`` instance. Functions such as
 ``sqrt`` do not require this additional argument.
-

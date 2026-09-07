@@ -11,6 +11,7 @@ import parser.Token;
 public class Signature {
 	public QType _returnType;
 	public boolean _isSamplingFunction;
+	public boolean _isEffectful;
 	public ArrayList<QType> _parameterTypes = new ArrayList<QType>();
 	public ArrayList<String> _parameterNames = new ArrayList<String>();
 	
