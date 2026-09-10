@@ -156,6 +156,10 @@
 		</exec>
 
 		<exec dir="build/test" executable="python3" failonerror="true">
+			<arg line="qcompile.py constructor_module ConstructorEngine.q"/>
+		</exec>
+
+		<exec dir="build/test" executable="python3" failonerror="true">
 			<arg line="test.py"/>
 		</exec>
 	</target>
