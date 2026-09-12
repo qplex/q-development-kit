@@ -2,6 +2,7 @@
 
 package tree;
 
+import compiler.QType;
 import parser.*;
 
 public class PmfInitializerElementNode extends QNode implements QParserTreeConstants {
@@ -16,7 +17,7 @@ public class PmfInitializerElementNode extends QNode implements QParserTreeConst
         _dimension = n-1;
         
 		for (int i=0; i<n-1; i++)
-			if (getChild(i)._type._kind != INT)
+			if (getChild(i)._type._kind != QType.Kind.INT)
 				throw new CompileException("Expected int", getChild(i));
 		
 		if (!getChild(n-1)._type.isNumber())

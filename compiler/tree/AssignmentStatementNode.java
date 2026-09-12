@@ -65,7 +65,7 @@ public class AssignmentStatementNode extends QNode implements QParserTreeConstan
 				throw new CompileException("Syntax error", getToken(1));
 
 			QType finalSuffixBaseType = ((SuffixedExpressionNode) targetNode)._types[n - 2];
-			if (finalSuffixBaseType._kind == PMF)
+			if (finalSuffixBaseType._kind == QType.Kind.PMF)
 				throw new CompileException("The probabilities in a pmf cannot be modified", finalSuffix);
 			break;
 		}

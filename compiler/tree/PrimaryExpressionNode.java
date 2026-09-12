@@ -71,16 +71,16 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 			_type = builtinFunctionType(QType.INT, QType.REAL);
 			break;
 		case MULTINOMIAL:
-			_type = builtinFunctionType(new QType(PMF, (Qualifier) null), QType.INT, QType.INT, QType.SIMPLE_PMF);
+			_type = builtinFunctionType(new QType(QType.Kind.PMF, (Qualifier) null), QType.INT, QType.INT, QType.SIMPLE_PMF);
 			break;
 		case MULTIVARIATEHYPERGEOMETRIC:
-			_type = builtinFunctionType(new QType(PMF, (Qualifier) null), QType.INT, QType.INT, QType.INT, QType.INTARRAY);
+			_type = builtinFunctionType(new QType(QType.Kind.PMF, (Qualifier) null), QType.INT, QType.INT, QType.INT, QType.INTARRAY);
 			break;
 		case CREATEPMFFROMREALARRAY:
 			_type = builtinFunctionType(QType.SIMPLE_PMF, QType.REALARRAY);
 			break;
 		case CREATEBIVARIATEPMFFROMREALMATRIX:
-			_type = builtinFunctionType(new QType(PMF, new Qualifier(2)), QType.REALMATRIX);
+			_type = builtinFunctionType(new QType(QType.Kind.PMF, new Qualifier(2)), QType.REALMATRIX);
 			break;
 		case EXP:
 		case LOG:
@@ -105,6 +105,6 @@ public class PrimaryExpressionNode extends QNode implements QParserTreeConstants
 		Signature signature = new Signature();
 		signature._returnType = returnType;
 		signature._parameterTypes = new ArrayList<QType>(Arrays.asList(args));
-		return new QType(QType.FUNCTION_KIND, signature);
+		return new QType(QType.Kind.FUNCTION, signature);
 	}
 }

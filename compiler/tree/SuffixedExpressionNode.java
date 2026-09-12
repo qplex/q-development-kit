@@ -31,68 +31,47 @@ public class SuffixedExpressionNode extends QNode implements QParserTreeConstant
 			switch (child.getId()) {
 
 			case JJTLOOKUP:
-				switch (_type._kind) {
-				case INTARRAY:
+				if (_type._kind == QType.Kind.INTARRAY)
 					_type = QType.INT;
-					break;
-				case REALARRAY:
+				else if (_type._kind == QType.Kind.REALARRAY)
 					_type = QType.REAL;
-					break;
-				case PMF:
+				else if (_type._kind == QType.Kind.PMF) {
 					if (_type._qualifier == null  || _type._qualifier._category != Qualifier.Category.SIMPLE
 							|| _type._qualifier._simpleRVNames.size() > 1)
 						throw new CompileException("Cannot extract a scalar probability from a joint or compound pmf", child);
 					_type = QType.REAL;
-					break;
-				case BOOLEANARRAY:
+				} else if (_type._kind == QType.Kind.BOOLEANARRAY)
 					_type = QType.BOOLEAN;
-					break;
-				case PMFARRAY:
-					_type = new QType(PMF, _type._qualifier);
-					break;
-				case INTMATRIX:
+				else if (_type._kind == QType.Kind.PMFARRAY)
+					_type = new QType(QType.Kind.PMF, _type._qualifier);
+				else if (_type._kind == QType.Kind.INTMATRIX)
 					_type = QType.INTARRAY;
-					break;
-				case REALMATRIX:
+				else if (_type._kind == QType.Kind.REALMATRIX)
 					_type = QType.REALARRAY;
-					break;
-				case BOOLEANMATRIX:
+				else if (_type._kind == QType.Kind.BOOLEANMATRIX)
 					_type = QType.BOOLEANARRAY;
-					break;
-				case PMFMATRIX:
-					_type = new QType(PMFARRAY, _type._qualifier);
-					break;
-				case INTERFACEARRAY:
-					_type = new QType(INTERFACE, _type._signature);
-					break;
-				case INTERFACEMATRIX:
-					_type = new QType(INTERFACEARRAY, _type._signature);
-					break;
-				default:
+				else if (_type._kind == QType.Kind.PMFMATRIX)
+					_type = new QType(QType.Kind.PMFARRAY, _type._qualifier);
+				else if (_type._kind == QType.Kind.INTERFACEARRAY)
+					_type = new QType(QType.Kind.INTERFACE, _type._signature);
+				else if (_type._kind == QType.Kind.INTERFACEMATRIX)
+					_type = new QType(QType.Kind.INTERFACEARRAY, _type._signature);
+				else
 					throw new CompileException("Type mismatch", this);
-				}
 				break;
 
 			case JJTQUALIFIER:
-				switch (_type._kind) {
-				case PMF:
+				if (_type._kind == QType.Kind.PMF) {
 					_type = _type.castTo(new Qualifier((QualifierNode) child));
 					if (_type == null)
 						throw new CompileException("Invalid Pmf extraction", child);
-					break;
-				default:
+				} else
 					throw new CompileException("Extraction is only supported for a Pmf", child);
-				}
 				break;
 
 			case JJTCALL: {
-				switch (_type._kind) {
-				case QType.FUNCTION_KIND:
-				case INTERFACE:
-					break;
-				default:
+				if (_type._kind != QType.Kind.FUNCTION && _type._kind != QType.Kind.INTERFACE)
 					throw new CompileException("Syntax error", child);
-				}
 
 				Signature signature = _type._signature;
 
@@ -117,13 +96,13 @@ public class SuffixedExpressionNode extends QNode implements QParserTreeConstant
 					if (token.kind != NUMBER || token.image.contains("."))
 						throw new CompileException("Second argument must be a literal integer", child);
 					int k = Integer.parseInt(token.image);
-					_type = new QType(PMF, new Qualifier(k));
+					_type = new QType(QType.Kind.PMF, new Qualifier(k));
 				} else if (firstToken.kind == MULTIVARIATEHYPERGEOMETRIC) {
 						Token token = child.getChild(0).getChild(2).jjtGetFirstToken();
 						if (token.kind != NUMBER || token.image.contains("."))
 							throw new CompileException("Third argument must be a literal integer", child);
 						int k = Integer.parseInt(token.image);
-						_type = new QType(PMF, new Qualifier(k));
+						_type = new QType(QType.Kind.PMF, new Qualifier(k));
 				} else
 					_type = signature._returnType;
 			}

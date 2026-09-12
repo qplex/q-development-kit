@@ -33,7 +33,7 @@ public class InterfaceStatementNode extends QNode implements QParserTreeConstant
 		symbol._isPublic = isPublic;
 		symbol._name = getToken(k + 2).image;
 		symbol._signature = signature;
-		symbol._type = new QType(INTERFACE, symbol._signature);
+		symbol._type = new QType(QType.Kind.INTERFACE, symbol._signature);
 
 		try {
 			Engine._instance._symbolTable.add(symbol);

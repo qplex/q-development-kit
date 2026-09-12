@@ -22,40 +22,37 @@ public class MultiplicativeExpressionNode extends QNode implements QParserTreeCo
 		// integer requirement of '%' position-sensitive: 'a % b / c' is legal
 		// (integer remainder, then real division) while 'a / b % c' is not
 		// ('a / b' is real).
-		int runningKind = kindOfOperand(getNode(0));
+		QType.Kind runningKind = kindOfOperand(getNode(0));
 
 		for (int operatorIndex = 1; operatorIndex < this.getTokenAndNodeCount(); operatorIndex += 2) {
 			QNode rightOperand = getNode(operatorIndex + 1);
-			int rightOperandKind = kindOfOperand(rightOperand);
+			QType.Kind rightOperandKind = kindOfOperand(rightOperand);
 
 			switch (getToken(operatorIndex).kind) {
 			case DIV:
 				// A slash denotes real division, whatever the operands.
-				runningKind = REAL;
+				runningKind = QType.Kind.REAL;
 				break;
 			case MOD:
-				if (runningKind == REAL)
+				if (runningKind == QType.Kind.REAL)
 					throw new CompileException("The left operand of '%' must be an integer", this);
-				if (rightOperandKind == REAL)
+				if (rightOperandKind == QType.Kind.REAL)
 					throw new CompileException("The right operand of '%' must be an integer", rightOperand);
 				break;
 			default: // MUL
-				if (rightOperandKind == REAL)
-					runningKind = REAL;
+				if (rightOperandKind == QType.Kind.REAL)
+					runningKind = QType.Kind.REAL;
 				break;
 			}
 		}
 
-		_type = runningKind == REAL ? QType.REAL : QType.INT;
+		_type = runningKind == QType.Kind.REAL ? QType.REAL : QType.INT;
 	}
 
-	private int kindOfOperand(QNode operandNode) {
-		switch (operandNode._type._kind) {
-		case INT:
-		case REAL:
-			return operandNode._type._kind;
-		default:
+	private QType.Kind kindOfOperand(QNode operandNode) {
+		if (operandNode._type._kind != QType.Kind.INT
+				&& operandNode._type._kind != QType.Kind.REAL)
 			throw new CompileException("Expected a number", operandNode);
-		}
+		return operandNode._type._kind;
 	}
 }

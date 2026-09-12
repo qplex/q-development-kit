@@ -23,9 +23,9 @@ public class ArrayInitializerNode extends QNode implements QParserTreeConstants 
 				throw new CompileException("Inconsistent types in initializer", getChild(0).getChild(i));
 		}
 	
-		if (elementType._kind == INTARRAY || elementType._kind == REALARRAY
-				|| elementType._kind == BOOLEANARRAY || elementType._kind == PMFARRAY
-				|| elementType._kind == INTERFACEARRAY) {
+		if (elementType._kind == QType.Kind.INTARRAY || elementType._kind == QType.Kind.REALARRAY
+				|| elementType._kind == QType.Kind.BOOLEANARRAY || elementType._kind == QType.Kind.PMFARRAY
+				|| elementType._kind == QType.Kind.INTERFACEARRAY) {
 			for (int rowIndex = 0; rowIndex < _elementCount; rowIndex++) {
 				QNode rowNode = getChild(0).getChild(rowIndex);
 				if (rowNode.getId() != JJTARRAYINITIALIZER)
@@ -33,41 +33,28 @@ public class ArrayInitializerNode extends QNode implements QParserTreeConstants 
 			}
 		}
 
-		switch (elementType._kind) {
-		case INT:
+		if (elementType._kind == QType.Kind.INT)
 			_type = QType.INTARRAY;
-			break;
-		case REAL:
+		else if (elementType._kind == QType.Kind.REAL)
 			_type = QType.REALARRAY;
-			break;
-		case BOOLEAN:
+		else if (elementType._kind == QType.Kind.BOOLEAN)
 			_type = QType.BOOLEANARRAY;
-			break;
-		case PMF:
-			_type = new QType(PMFARRAY, elementType._qualifier);
-			break;
-		case INTARRAY:
+		else if (elementType._kind == QType.Kind.PMF)
+			_type = new QType(QType.Kind.PMFARRAY, elementType._qualifier);
+		else if (elementType._kind == QType.Kind.INTARRAY)
 			_type = QType.INTMATRIX;
-			break;
-		case REALARRAY:
+		else if (elementType._kind == QType.Kind.REALARRAY)
 			_type = QType.REALMATRIX;
-			break;
-		case BOOLEANARRAY:
+		else if (elementType._kind == QType.Kind.BOOLEANARRAY)
 			_type = QType.BOOLEANMATRIX;
-			break;
-		case PMFARRAY:
-			_type = new QType(PMFMATRIX, elementType._qualifier);
-			break;
-		case QType.FUNCTION_KIND:
-		case INTERFACE:
-			_type = new QType(INTERFACEARRAY, (Signature) null);
-			break;
-		case INTERFACEARRAY:
-			_type = new QType(INTERFACEMATRIX, (Signature) null);
-			break;
-		default:
+		else if (elementType._kind == QType.Kind.PMFARRAY)
+			_type = new QType(QType.Kind.PMFMATRIX, elementType._qualifier);
+		else if (elementType._kind == QType.Kind.FUNCTION || elementType._kind == QType.Kind.INTERFACE)
+			_type = new QType(QType.Kind.INTERFACEARRAY, (Signature) null);
+		else if (elementType._kind == QType.Kind.INTERFACEARRAY)
+			_type = new QType(QType.Kind.INTERFACEMATRIX, (Signature) null);
+		else
 			assert(false);
-		}
 	}	
 
 	private static QType commonType(QType t1, QType t2) {

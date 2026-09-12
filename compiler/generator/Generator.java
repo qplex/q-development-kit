@@ -5,15 +5,16 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
+import static compiler.QType.Kind.*;
+
 import compiler.*;
-import parser.QParserConstants;
 import parser.Token;
 import tree.QNode;
 
 import java.time.LocalDateTime;
 
 /** Generates CPP code. */
-public class Generator implements QParserConstants {
+public class Generator {
 	public static String compilerVersionForGeneratedFileHeader = "";
 
 	static boolean _logActivated;
@@ -140,7 +141,7 @@ public class Generator implements QParserConstants {
 			case INTERFACEARRAY:
 			case INTERFACEMATRIX:
 				(new TemplateExpander.FromLine("    @CNAME _@NAME;")) //
-						.substitute("@CNAME", type._cName) //
+						.substitute("@CNAME", CppNames.cppType(type)) //
 						.substitute("@NAME", name) //
 						.run();
 				break;
@@ -154,7 +155,7 @@ public class Generator implements QParserConstants {
 						.run();
 				break;
 			}
-			case QType.FUNCTION_KIND:
+			case FUNCTION:
 				break;
 			default:
 				assert (false);
@@ -212,8 +213,8 @@ public class Generator implements QParserConstants {
 					// Scalars keep the plain conversion; the array and matrix types
 					// read/write as Q data objects (copied out and in).
 					boolean isObject = type.isDataObject();
-					String getConverter = isObject ? type._xName + "_out" : type._xName + "_toPy";
-					String setConverter = isObject ? type._xName + "_in" : type._xName + "_fromPy";
+					String getConverter = isObject ? CppNames.runtimeName(type) + "_out" : CppNames.runtimeName(type) + "_toPy";
+					String setConverter = isObject ? CppNames.runtimeName(type) + "_in" : CppNames.runtimeName(type) + "_fromPy";
 					new TemplateExpander.FromFile("GetSet.txt") //
 							.substitute("@Q", engineName) //
 							.substitute("@NAME", name) //
@@ -235,11 +236,11 @@ public class Generator implements QParserConstants {
 						int n = qualifier._simpleRVNames.size();
 						if (n == 1) {
 							b.append("Simple");
-							b.append(type._xName);
+							b.append(CppNames.runtimeName(type));
 							b.append("(value");
 						} else {
 							b.append("Joint");
-							b.append(type._xName);
+							b.append(CppNames.runtimeName(type));
 							b.append("(value,");
 							b.append(n);
 						}
@@ -247,7 +248,7 @@ public class Generator implements QParserConstants {
 					}
 					case COMPOUND: {
 						b.append("Compound");
-						b.append(type._xName);
+						b.append(CppNames.runtimeName(type));
 						b.append("(value");
 						b.append(qualifier.compoundConfirmParams());
 						break;
@@ -259,16 +260,16 @@ public class Generator implements QParserConstants {
 					// All three pmf-shaped globals read back as Q data objects and
 					// accept an object (or a plain dict/list) on assignment, copied
 					// into the engine's own pool.
-					String getConverter = type._xName + "_out";
-					String setConverter = type._xName + "_in";
+					String getConverter = CppNames.runtimeName(type) + "_out";
+					String setConverter = CppNames.runtimeName(type) + "_in";
 
 					new TemplateExpander.FromFile("GetSetPmf.txt") //
 							.substitute("@Q", engineName) //
 							.substitute("@NAME", name) //
-							.substitute("@TYPE", type._xName) //
+							.substitute("@TYPE", CppNames.runtimeName(type)) //
 							.substitute("@GET_CONVERT", getConverter) //
 							.substitute("@SET_CONVERT", setConverter) //
-							.substitute("@VALUETYPE", type._cName) //
+							.substitute("@VALUETYPE", CppNames.cppType(type)) //
 							.substitute("@CONFIRM", b.toString()).run();
 					break;
 				}
@@ -283,7 +284,7 @@ public class Generator implements QParserConstants {
 				case INTERFACEMATRIX:
 					new TemplateExpander.FromFile("GetSetInterfaceArrayOrMatrix.txt") //
 							.substitute("@Q", engineName).substitute("@NAME", name) //
-							.substitute("@TYPE", type._xName) //
+							.substitute("@TYPE", CppNames.runtimeName(type)) //
 							.substitute("@INDEX", engine._signatureTable.getIndex(type._signature) + 1) //
 							.run();
 					break;
@@ -296,7 +297,7 @@ public class Generator implements QParserConstants {
 			Symbol symbol = engine._symbolTable.get(name);
 			QType type = symbol._type;
 			switch (type._kind) {
-			case QType.FUNCTION_KIND:
+			case FUNCTION:
 				functionGenerator.writeFunctionImplementation(symbol);
 				if (symbol._isPublic || symbol._name.equals("init")) {
 					String templateFilename;
@@ -338,7 +339,7 @@ public class Generator implements QParserConstants {
 				Symbol symbol = engine._symbolTable.get(name);
 				QType type = symbol._type;
 
-				if (type._kind != QType.FUNCTION_KIND) {
+				if (type._kind != FUNCTION) {
 
 					t.repeat();
 					t.substitute("@NAME", name);
@@ -359,12 +360,12 @@ public class Generator implements QParserConstants {
 					case INTMATRIX:
 					case REALMATRIX:
 					case BOOLEANMATRIX:
-						t.substitute("@VALUE", "default" + type._qName + "((QObject *)self)");
+						t.substitute("@VALUE", "default" + CppNames.runtimeName(type) + "((QObject *)self)");
 						break;
 					case PMF:
 					case PMFARRAY:
 					case PMFMATRIX:
-						t.substitute("@VALUE", "default" + type._qName + "((QObject *)self, "
+						t.substitute("@VALUE", "default" + CppNames.runtimeName(type) + "((QObject *)self, "
 								+ ExpressionGenerator.generateQualifier(type._qualifier) + ")");
 						break;
 					case INTERFACE: {
@@ -401,7 +402,7 @@ public class Generator implements QParserConstants {
 			_cSourceWriter.println("PyMethodDef _" + engineName + "_methods[] = {");
 			for (String name : engine._symbolTable.publicGlobalNames()) {
 				Symbol symbol = engine._symbolTable.get(name);
-				if (symbol._type._kind == QType.FUNCTION_KIND)
+				if (symbol._type._kind == FUNCTION)
 					_cSourceWriter.printf("    { \"%s\", _%s_%s_Py, METH_VARARGS, NULL },\n", toPythonName(name),
 							engine._engineName, name);
 			}
@@ -442,7 +443,7 @@ public class Generator implements QParserConstants {
 			for (String name : engine._symbolTable.publicGlobalNames()) {
 				Symbol symbol = engine._symbolTable.get(name);
 				switch (symbol._type._kind) {
-				case QType.FUNCTION_KIND:
+				case FUNCTION:
 					continue;
 				default:
 					break;
@@ -472,7 +473,7 @@ public class Generator implements QParserConstants {
 		int implementationCount = 0;
 		for (String functionName : engine._symbolTable.globalNames()) {
 			Symbol symbol = engine._symbolTable.get(functionName);
-			if (symbol._type._kind != QType.FUNCTION_KIND)
+			if (symbol._type._kind != FUNCTION)
 				continue;
 			Signature signature = symbol._signature;
 			if (!engine._signatureTable.getSignatures().contains(signature))
@@ -489,12 +490,12 @@ public class Generator implements QParserConstants {
 					"@RETURN-TYPE _@OBJ_defaultImplementation@INDEX(_@OBJ_object *self@REPEAT(, @PARAM-TYPE@)) { throw CException(\"Uninitialized interface\"); }" //
 			) //
 					.substitute("@OBJ", objectname) //
-					.substitute("@RETURN-TYPE", signature._returnType._cName) //
+					.substitute("@RETURN-TYPE", CppNames.cppType(signature._returnType)) //
 					.substitute("@INDEX", i + 1);
 
 			for (int j = 0; j < signature._parameterTypes.size(); j++) {
 				t.repeat() //
-						.substitute("@PARAM-TYPE", signature._parameterTypes.get(j)._cName);
+						.substitute("@PARAM-TYPE", CppNames.cppType(signature._parameterTypes.get(j)));
 			}
 
 			t.run();
@@ -507,12 +508,12 @@ public class Generator implements QParserConstants {
 					"typedef @RETURN-TYPE _@OBJ_Interface@INDEX(_@OBJ_object *@REPEAT(, @PARAM-TYPE@));" //
 			) //
 					.substitute("@OBJ", objectname) //
-					.substitute("@RETURN-TYPE", signature._returnType._cName) //
+					.substitute("@RETURN-TYPE", CppNames.cppType(signature._returnType)) //
 					.substitute("@INDEX", i + 1);
 
 			for (int j = 0; j < signature._parameterTypes.size(); j++) {
 				t.repeat() //
-						.substitute("@PARAM-TYPE", signature._parameterTypes.get(j)._cName);
+						.substitute("@PARAM-TYPE", CppNames.cppType(signature._parameterTypes.get(j)));
 			}
 
 			t.run();
@@ -537,7 +538,7 @@ public class Generator implements QParserConstants {
 
 		for (String functionName : engine._symbolTable.globalNames()) {
 			Symbol symbol = engine._symbolTable.get(functionName);
-			if (symbol._type._kind != QType.FUNCTION_KIND)
+			if (symbol._type._kind != FUNCTION)
 				continue;
 			Signature signature = symbol._signature;
 			if (!engine._signatureTable.getSignatures().contains(signature))
@@ -628,9 +629,9 @@ public class Generator implements QParserConstants {
 	 * boundary functions.
 	 */
 	private static void generateArrayObject(QType type) {
-		String v = type._qName;              // IntArray, PmfMatrix, ... (the C++ value type)
-		String stem = v + "DataObject";      // IntArrayDataObject, ...
-		String pyName = toPythonName(v);     // int_array, pmf_matrix, ...
+		String name = CppNames.runtimeName(type); // IntArray, PmfMatrix, ...
+		String stem = name + "DataObject"; // IntArrayDataObject, ...
+		String pyName = toPythonName(name); // int_array, pmf_matrix, ...
 
 		String arrayMethod;
 		String getset;
@@ -649,14 +650,14 @@ public class Generator implements QParserConstants {
 		case INTARRAY:
 		case REALARRAY:
 		case BOOLEANARRAY:
-			arrayMethod = "ArrayDataObject_array<" + v + ">";
+			arrayMethod = "ArrayDataObject_array<" + name + ">";
 			getset = "0";
 			hasView = true;
 			break;
 		case INTMATRIX:
 		case REALMATRIX:
 		case BOOLEANMATRIX:
-			arrayMethod = "ArrayDataObject_array<" + v + ">";
+			arrayMethod = "ArrayDataObject_array<" + name + ">";
 			getset = "0";
 			hasView = false;
 			break;
@@ -671,7 +672,7 @@ public class Generator implements QParserConstants {
 				.substitute("@ELEMENT", arrayElementExpr(type)) //
 				.substitute("@ARRAY_METHOD", arrayMethod) //
 				.substitute("@GETSET", getset) //
-				.substitute("@V", v) //
+				.substitute("@V", name) //
 				.run();
 
 		// Only the array shapes are handed out as element views (matrix rows and
@@ -680,7 +681,7 @@ public class Generator implements QParserConstants {
 			new TemplateExpander.FromLine(
 					"PyObject *@V_view(PyObject *owner, @V *v) { return ArrayDataObject_view<@V>(&@STEM_Type, owner, v); }") //
 							.substitute("@STEM", stem) //
-							.substitute("@V", v) //
+							.substitute("@V", name) //
 							.run();
 
 		_cSourceWriter.println();

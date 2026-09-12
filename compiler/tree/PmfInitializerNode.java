@@ -18,6 +18,6 @@ public class PmfInitializerNode extends QNode implements QParserTreeConstants {
 		int[] a = new int[n];
 		for (int i = 0; i < n; i++)
 			a[i] = ((PmfInitializerGroupNode) getChild(i))._dimension;
-		_type = new QType(PMF, new Qualifier(a));
+		_type = new QType(QType.Kind.PMF, new Qualifier(a));
 	}
 }

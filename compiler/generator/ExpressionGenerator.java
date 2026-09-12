@@ -42,7 +42,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				if (engine != null) {
 					Symbol symbol = engine._symbolTable.get(name);
 					if (symbol != null && symbol._level == 0) {
-						if (symbol._type._kind == QType.FUNCTION_KIND)
+						if (symbol._type._kind == QType.Kind.FUNCTION)
 							pw.print("_" + engine._engineName);
 						else
 							pw.print("self->");
@@ -59,19 +59,13 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				return sw.toString();
 			}
 			case MIN:
-				return "std::min";
 			case MAX:
-				return "std::max";
 			case FLOOR:
-				return "ifloor";
 			case CEILING:
-				return "iceiling";
 			case LOG:
-				return "safeLog";
 			case POW:
-				return "safePow";
 			case SQRT:
-				return "safeSqrt";
+				return CppNames.name(firstToken.kind);
 			case BRANCHPROBABILITY: {
 				int currentSamplingDepth = Generator._indentationManager.getSampleCount() - 1;
 				return "samplingStack.branchProbability(" + currentSamplingDepth + ")";
@@ -79,6 +73,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			case NUMBER:
 			case TRUE:
 			case FALSE:
+				return firstToken.image;
 			case BERNOULLI:
 			case BINOMIAL:
 			case MULTINOMIAL:
@@ -92,7 +87,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			case COMPUTELEFTTAIL:
 			case COMPUTERIGHTTAIL:
 			case ISSAMEPMFINSTANCE:
-				return firstToken.image;
+				return CppNames.name(firstToken.kind);
 			default:
 				assert (false);
 			}
@@ -146,25 +141,22 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			QNode listNode = node.getChild(0);
 			int n = listNode.jjtGetNumChildren();
 
-			switch (node._type._kind) {
-			case INTARRAY:
-			case REALARRAY:
-			case BOOLEANARRAY:
-			case PMFARRAY:
-			case INTERFACEARRAY:
-				pw.print("initialize" + node._type._qName + "((QObject *)self," + n);
+			QType.Kind kind = node._type._kind;
+			if (kind == QType.Kind.INTARRAY || kind == QType.Kind.REALARRAY
+					|| kind == QType.Kind.BOOLEANARRAY || kind == QType.Kind.PMFARRAY
+					|| kind == QType.Kind.INTERFACEARRAY) {
+				pw.print("initialize" + CppNames.runtimeName(node._type) + "((QObject *)self," + n);
 				for (int i = 0; i < n; i++) {
 					pw.print(",");
 					pw.print(generate(engine, listNode.getChild(i)));
 				}
 				pw.print(")");
 				return sw.toString();
-			case INTMATRIX:
-			case REALMATRIX:
-			case BOOLEANMATRIX:
-			case PMFMATRIX:
-			case INTERFACEMATRIX: {
-				pw.print("initialize" + node._type._qName + "((QObject *) self," + n);
+			}
+			if (kind == QType.Kind.INTMATRIX || kind == QType.Kind.REALMATRIX
+					|| kind == QType.Kind.BOOLEANMATRIX || kind == QType.Kind.PMFMATRIX
+					|| kind == QType.Kind.INTERFACEMATRIX) {
+				pw.print("initialize" + CppNames.runtimeName(node._type) + "((QObject *) self," + n);
 				for (int i = 0; i < n; i++) {
 					int m = listNode.getChild(i).getChild(0).jjtGetNumChildren();
 					pw.print(",");
@@ -177,10 +169,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 				pw.print(")");
 				return sw.toString();
 			}
-			default:
-				assert (false);
-				return sw.toString();
-			}
+			assert (false);
+			return sw.toString();
 		}
 
 		case JJTPMFINITIALIZER: {
@@ -287,9 +277,9 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			for (int i = n - 1; i > 0; i--) {
 				switch (node.getChild(i).getId()) {
 				case JJTLOOKUP:
-					if (types[i - 1]._kind == PMF)
+					if (types[i - 1]._kind == QType.Kind.PMF)
 						pw.print("lookupProbability(");
-					else if (types[i - 1]._kind == INTERFACEARRAY) {
+					else if (types[i - 1]._kind == QType.Kind.INTERFACEARRAY) {
 						Signature signature = types[i - 1]._signature;
 						int k = engine._signatureTable.getSignatures().indexOf(signature) + 1;
 						pw.print("_" + engine._engineName + "_lookup" + k + "(");
@@ -466,33 +456,30 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 			return generateQualifier(q);
 		}
 		case JJTCREATEEXPRESSION:
-			switch (node._type._kind) {
-			case INTARRAY:
-			case REALARRAY:
-			case BOOLEANARRAY:
-				return "create" + node._type._qName + "((QObject *)self, "
+			if (node._type._kind == QType.Kind.INTARRAY || node._type._kind == QType.Kind.REALARRAY
+					|| node._type._kind == QType.Kind.BOOLEANARRAY)
+				return "create" + CppNames.runtimeName(node._type) + "((QObject *)self, "
 						+ generate(engine, node.getChild(0).getChild(0)) + ")";
-			case PMFARRAY:
-				return "create" + node._type._qName + "((QObject *)self, " + generateQualifier(node._type._qualifier)
+			if (node._type._kind == QType.Kind.PMFARRAY)
+				return "create" + CppNames.runtimeName(node._type) + "((QObject *)self, " + generateQualifier(node._type._qualifier)
 						+ "," + generate(engine, node.getChild(0).getChild(0)) + ")";
-			case INTERFACEARRAY: {
+			if (node._type._kind == QType.Kind.INTERFACEARRAY) {
 				Signature signature = node.getParent().getNode(0)._type._signature;
 				int i = engine._signatureTable.getIndex(signature) + 1;
 				return "createInterfaceArray((QObject *) self, (void *) &_" + engine._engineName
 						+ "_defaultImplementation" + i + "," + generate(engine, node.getChild(0).getChild(0))
 						+ ")";
 			}
-			case INTMATRIX:
-			case REALMATRIX:
-			case BOOLEANMATRIX:
-				return "create" + node._type._qName + "((QObject *)self, "
+			if (node._type._kind == QType.Kind.INTMATRIX || node._type._kind == QType.Kind.REALMATRIX
+					|| node._type._kind == QType.Kind.BOOLEANMATRIX)
+				return "create" + CppNames.runtimeName(node._type) + "((QObject *)self, "
 						+ generate(engine, node.getChild(0).getChild(0)) + ","
 						+ generate(engine, node.getChild(0).getChild(1)) + ")";
-			case PMFMATRIX:
-				return "create" + node._type._qName + "((QObject *)self, " + generateQualifier(node._type._qualifier)
+			if (node._type._kind == QType.Kind.PMFMATRIX)
+				return "create" + CppNames.runtimeName(node._type) + "((QObject *)self, " + generateQualifier(node._type._qualifier)
 						+ "," + generate(engine, node.getChild(0).getChild(0)) + ","
 						+ generate(engine, node.getChild(0).getChild(1)) + ")";
-			case INTERFACEMATRIX: {
+			if (node._type._kind == QType.Kind.INTERFACEMATRIX) {
 				Signature signature = node.getParent().getNode(0)._type._signature;
 				int i = engine._signatureTable.getIndex(signature) + 1;
 				return "createInterfaceMatrix((QObject *) self, (void *) &_" + engine._engineName
@@ -500,10 +487,8 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 						+ generate(engine, node.getChild(0).getChild(1)) + ")";
 			}
 
-			default:
-				assert false;
-				return null;
-			}
+			assert false;
+			return null;
 
 		default:
 			assert false;
@@ -522,7 +507,7 @@ class ExpressionGenerator implements QParserTreeConstants, QParserConstants {
 		Qualifier q = targetType._qualifier;
 		boolean isLiteral = source.getId() == JJTPMFINITIALIZER || source.getId() == JJTARRAYINITIALIZER;
 		if (isLiteral && q != null && q._category == Qualifier.Category.COMPOUND)
-			return "confirmCompound" + targetType._xName + "(" + value + q.compoundConfirmParams() + ")";
+			return "confirmCompound" + CppNames.runtimeName(targetType) + "(" + value + q.compoundConfirmParams() + ")";
 		return value;
 	}
 

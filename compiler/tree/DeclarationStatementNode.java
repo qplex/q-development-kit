@@ -32,7 +32,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 		if ((!isToken(k + 2)) && getNode(k + 2).getId() == JJTFUNCTIONDECLARATIONBODY) {
 			BlockNode block = (BlockNode) (getChild(1).getChild(1));
 
-			symbol._type = new QType(QType.FUNCTION_KIND, block._signature);
+			symbol._type = new QType(QType.Kind.FUNCTION, block._signature);
 			symbol._signature = block._signature;
 			symbol._signature._returnType = QType.getType((TypeNode) getNode(k));
 
@@ -43,7 +43,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 			if (symbol._name.equals("init")) {
 				if (symbol._isPublic)
 					throw new CompileException("Constructor may not be public", this);
-				if (symbol._signature._returnType._kind != VOID)
+				if (symbol._signature._returnType._kind != QType.Kind.VOID)
 					throw new CompileException("Constructor may not return a value", this);
 			}
 			
@@ -55,19 +55,19 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 				throw new CompileException("Skip statements cannot appear before sampling statements in function body", block.jjtGetFirstToken());
 			}
 
-			if (isSamplingFunction && symbol._signature._returnType._kind != PMF)
+			if (isSamplingFunction && symbol._signature._returnType._kind != QType.Kind.PMF)
 				throw new CompileException("Sampling function must return Pmf", getChild(0));
 
-			if (symbol._signature._returnType._kind != VOID)
+			if (symbol._signature._returnType._kind != QType.Kind.VOID)
 				if (block._returnValueNodes == null || !block._isTerminal)
 					throw new CompileException("Non-void function must return a value on all branches",
 							block.jjtGetFirstToken());
 
-			if (symbol._signature._returnType._kind == PMF && symbol._signature._returnType._qualifier._category == Qualifier.Category.CONDITIONAL) 
+			if (symbol._signature._returnType._kind == QType.Kind.PMF && symbol._signature._returnType._qualifier._category == Qualifier.Category.CONDITIONAL)
 				throw new CompileException("Functions may not return conditional Pmfs", getChild(0));
 			
 			if (!isSamplingFunction) {
-				if (symbol._signature._returnType._kind == VOID) {
+				if (symbol._signature._returnType._kind == QType.Kind.VOID) {
 					// All return statements must not return a value
 					if (block._returnValueNodes != null) {
 						QNode node = block._returnValueNodes.get(0);
@@ -78,7 +78,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 					// All return statements must return a value of correct type
 					for (QNode returnValueNode : block._returnValueNodes) {
 						QType returnType;
-						if (returnValueNode._type._kind != RETURN)
+						if (returnValueNode._type._kind != QType.Kind.RETURN)
 							returnType = returnValueNode._type;
 						else
 							returnType = returnValueNode.getChild(0).getChild(0)._type;
@@ -90,7 +90,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 			}
 
 			for (QNode returnValueNode : block._returnValueNodes)
-				if (returnValueNode._type._kind != RETURN)
+				if (returnValueNode._type._kind != QType.Kind.RETURN)
 					throw new CompileException("Sampling functions must return sampled variables or an integer expression of them",
 							returnValueNode);
 
@@ -139,7 +139,7 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 
 		symbol._type = QType.getType((TypeNode) getNode(k));
 
-		if (symbol._type._kind == PMF && symbol._type._qualifier._category == Qualifier.Category.CONDITIONAL) 
+		if (symbol._type._kind == QType.Kind.PMF && symbol._type._qualifier._category == Qualifier.Category.CONDITIONAL)
 			throw new CompileException("Declaration statements cannot create conditional Pmfs", getChild(0).getChild(0));
 
 		if (getToken(k + 2).kind == SEMICOLON)
@@ -179,11 +179,11 @@ public class DeclarationStatementNode extends QNode implements QParserTreeConsta
 			while (suffixed.getChild(index) != node)
 				index++;
 			QType targetType = suffixed._types[index - 1];
-			if (targetType._kind == INTERFACE) {
+			if (targetType._kind == QType.Kind.INTERFACE) {
 				if (isSamplingFunction)
 					throw new CompileException("Sampling functions may not call an interface", node);
 				effectful = true;
-			} else if (targetType._kind == QType.FUNCTION_KIND
+			} else if (targetType._kind == QType.Kind.FUNCTION
 					&& targetType._signature._isEffectful) {
 				if (isSamplingFunction)
 					throw new CompileException("Sampling functions may not call '"

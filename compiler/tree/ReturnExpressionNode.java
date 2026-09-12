@@ -28,6 +28,6 @@ public class ReturnExpressionNode extends QNode implements QParserTreeConstants 
 		if (isSimpleList) 
 			a = new int[] {n}; 
 
-		_type = new QType(RETURN, new Qualifier(a));
+		_type = new QType(QType.Kind.RETURN, new Qualifier(a));
 	}
 }

@@ -18,15 +18,10 @@ public class AdditiveExpressionNode extends QNode implements QParserTreeConstant
 		
 		for (int i=0; i<jjtGetNumChildren(); i++) {
 			QType t = getChild(i)._type;
-			switch(t._kind) {
-			case INT:
-				break;
-			case REAL:
+			if (t._kind == QType.Kind.REAL)
 				_type = QType.REAL;
-				break;
-			default:
+			else if (t._kind != QType.Kind.INT)
 				throw new CompileException("Expected a number", getChild(i));
-			}
 		}
 	}
 }

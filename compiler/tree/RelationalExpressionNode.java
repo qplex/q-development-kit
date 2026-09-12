@@ -18,13 +18,8 @@ public class RelationalExpressionNode extends QNode implements QParserTreeConsta
 		
 		for (int i=0; i<2; i++) {
 			QType t = getChild(i)._type;
-			switch(t._kind) {
-			case INT:
-			case REAL:
-				break;
-			default:
+			if (t._kind != QType.Kind.INT && t._kind != QType.Kind.REAL)
 				throw new CompileException("Expected a number", getChild(i));
-			}
 		}
 		
 	}

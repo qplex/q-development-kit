@@ -71,7 +71,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				"@RETURN-TYPE _@OBJ_@NAME(@REPEAT(@PARAM-TYPE @PARAM-NAME@,, @)) {" //
 		) //
 				.substitute("@OBJ", _engine._engineName) //
-				.substitute("@RETURN-TYPE", symbol._signature._returnType._cName) //
+				.substitute("@RETURN-TYPE", CppNames.cppType(symbol._signature._returnType)) //
 				.substitute("@NAME", symbol._name); //
 
 		t.repeat() //
@@ -79,7 +79,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				.substitute("@PARAM-NAME", "self");
 		for (int i = 0; i < signature._parameterTypes.size(); i++) {
 			t.repeat() //
-					.substitute("@PARAM-TYPE", signature._parameterTypes.get(i)._cName) //
+					.substitute("@PARAM-TYPE", CppNames.cppType(signature._parameterTypes.get(i))) //
 					.substitute("@PARAM-NAME", "_" + signature._parameterNames.get(i));
 		}
 
@@ -310,7 +310,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				boolean isAssignment = statementNode.getToken(2).kind == ASSIGN;
 
 				_indentationManager.writeIndent();
-				Generator._cSourceWriter.print(type._cName);
+				Generator._cSourceWriter.print(CppNames.cppType(type));
 				Generator._cSourceWriter.print(" _");
 				Generator._cSourceWriter.print(variableName);
 				if (isAssignment) {
@@ -329,33 +329,23 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					}
 				} else if (type.isScalar()) {
 					Generator._cSourceWriter.print(" = ");
-					switch (type._kind) {
-					case INT:
+					if (type._kind == QType.Kind.INT)
 						Generator._cSourceWriter.print("0");
-						break;
-					case REAL:
+					else if (type._kind == QType.Kind.REAL)
 						Generator._cSourceWriter.print("0.0");
-						break;
-					case BOOLEAN:
+					else if (type._kind == QType.Kind.BOOLEAN)
 						Generator._cSourceWriter.print("false");
-						break;
-					default:
+					else
 						assert (false);
-					}
 				} else {
 					Generator._cSourceWriter.print(" = default");
-					Generator._cSourceWriter.print(type._xName);
-					switch (type._kind) {
-					case PMF:
-					case PMFARRAY:
-					case PMFMATRIX:
+					Generator._cSourceWriter.print(CppNames.runtimeName(type));
+					if (type._kind == QType.Kind.PMF || type._kind == QType.Kind.PMFARRAY
+							|| type._kind == QType.Kind.PMFMATRIX)
 						Generator._cSourceWriter
 								.print("((QObject *)self, " + ExpressionGenerator.generateQualifier(type._qualifier) + ")");
-						break;
-					default:
+					else
 						Generator._cSourceWriter.print("((QObject *)self)");
-						break;
-					}
 				}
 
 				Generator._cSourceWriter.println(";");
@@ -472,10 +462,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 			String prefix = "";
 			String suffix = "";
 
-			switch(qtype._kind) { 
-			case PMF:
-			case PMFARRAY:
-			case PMFMATRIX:
+			if (qtype._kind == QType.Kind.PMF || qtype._kind == QType.Kind.PMFARRAY
+					|| qtype._kind == QType.Kind.PMFMATRIX) {
 				Qualifier qualifier = qtype._qualifier;
 
 				String category, confirmParams;
@@ -492,10 +480,10 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 					confirmParams = qualifier.compoundConfirmParams();
 				}
 				
-				String qname = qtype._qName;
+				String name = CppNames.runtimeName(qtype);
 
-				prefix = "confirm" + category + qname + "(";
-			    suffix = confirmParams + ")";
+				prefix = "confirm" + category + name + "(";
+				suffix = confirmParams + ")";
 			}
 			
 			b.append(", ");
@@ -512,7 +500,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				.substitute("@OBJ", _engine._engineName) //
 				.substitute("@NAME", symbol._name) //
 				.substitute("@NUM_PARAMS", String.valueOf(n)) //
-				.substitute("@RETURN_TYPE", symbol._signature._returnType._xName) //
+				.substitute("@RETURN_TYPE", CppNames.runtimeName(symbol._signature._returnType)) //
 				.substitute("@RETURN_CONVERT", returnConverter(symbol._signature._returnType)) //
 				.substitute("@ALL_ARGS", allArgs);
 
@@ -521,8 +509,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 			String index = String.valueOf(i);
 			t. //
 					repeat() //
-					.substitute("@CTYPE", argType._cName) //
-					.substitute("@XTYPE", argType._xName) //
+					.substitute("@CTYPE", CppNames.cppType(argType)) //
+					.substitute("@XTYPE", CppNames.runtimeName(argType)) //
 					.substitute("@ARG_CONVERT", argConverter(argType)) //
 					.substitute("@INDEX", index);
 		}
@@ -538,8 +526,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 	 */
 	private static String argConverter(QType type) {
 		if (type.isDataObject())
-			return type._xName + "_in";
-		return type._xName + "_fromPy";
+			return CppNames.runtimeName(type) + "_in";
+		return CppNames.runtimeName(type) + "_fromPy";
 	}
 
 	/**
@@ -549,8 +537,8 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 	 */
 	private static String returnConverter(QType type) {
 		if (type.isDataObject())
-			return type._xName + "_out";
-		return type._xName + "_toPy";
+			return CppNames.runtimeName(type) + "_out";
+		return CppNames.runtimeName(type) + "_toPy";
 	}
 
 	void writeSamplingLoop(QNode statementNode, String sampleVariableName, String distributionVariableName,
@@ -654,7 +642,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 				new TemplateExpander.FromLine(_engine, //
 						"@TYPE returnValue = @VALUE;" //
 				) //
-						.substitute("@TYPE", _returnType._cName) //
+						.substitute("@TYPE", CppNames.cppType(_returnType)) //
 						.substitute("@VALUE", returnValue) //
 						.run();
 				if (Generator._logActivated) {
@@ -882,7 +870,7 @@ class FunctionGenerator implements QParserTreeConstants, QParserConstants {
 			return;
 		}
 
-		if (statementNode.getChild(1)._type._kind == QType.FUNCTION_KIND) {
+		if (statementNode.getChild(1)._type._kind == QType.Kind.FUNCTION) {
 			if (statementNode.getChild(0).jjtGetNumChildren() == 0) {
 				// Assigning a function to an interface variable
 				String targetVariableName = statementNode.getChild(0).getToken(0).image;

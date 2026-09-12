@@ -37,7 +37,7 @@ public class InterfaceMatrixStatementNode extends QNode implements QParserTreeCo
 		symbol._isPublic = isPublic;
 		symbol._name = getToken(k + 2).image;
 		symbol._signature = signature;
-		symbol._type = new QType(INTERFACEMATRIX, symbol._signature);
+		symbol._type = new QType(QType.Kind.INTERFACEMATRIX, symbol._signature);
 
 		try {
 			Engine._instance._symbolTable.add(symbol);
@@ -48,4 +48,3 @@ public class InterfaceMatrixStatementNode extends QNode implements QParserTreeCo
 		Engine._instance._signatureTable.add(symbol._signature);
 	}
 }
-

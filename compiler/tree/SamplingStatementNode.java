@@ -19,7 +19,7 @@ public class SamplingStatementNode extends QNode implements QParserTreeConstants
 		QNode identifierListNode = getChild(0);
 		QNode rhs = getChild(1);
 
-		if (rhs._type._kind != PMF)
+		if (rhs._type._kind != QType.Kind.PMF)
 			throw new CompileException("Must sample from a Pmf", rhs);
 		
 		if (rhs._type._qualifier._category == Qualifier.Category.COMPOUND)

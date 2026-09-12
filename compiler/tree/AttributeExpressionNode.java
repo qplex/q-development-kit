@@ -23,22 +23,15 @@ public class AttributeExpressionNode extends QNode implements QParserTreeConstan
 			_type = QType.INT;
 			return;
 		case LENGTH:
-			switch (sourceType._kind) {
-			case INTARRAY:
-			case REALARRAY:
-			case BOOLEANARRAY:
-			case PMFARRAY:
-			case INTMATRIX:
-			case REALMATRIX:
-			case BOOLEANMATRIX:
-			case PMFMATRIX:
-			case INTERFACEARRAY:
-			case INTERFACEMATRIX:
+			if (sourceType._kind == QType.Kind.INTARRAY || sourceType._kind == QType.Kind.REALARRAY
+					|| sourceType._kind == QType.Kind.BOOLEANARRAY || sourceType._kind == QType.Kind.PMFARRAY
+					|| sourceType._kind == QType.Kind.INTMATRIX || sourceType._kind == QType.Kind.REALMATRIX
+					|| sourceType._kind == QType.Kind.BOOLEANMATRIX || sourceType._kind == QType.Kind.PMFMATRIX
+					|| sourceType._kind == QType.Kind.INTERFACEARRAY || sourceType._kind == QType.Kind.INTERFACEMATRIX) {
 				_type = QType.INT;
 				return;
-			default:
-				throw new CompileException("Expected array or matrix", this);
 			}
+			throw new CompileException("Expected array or matrix", this);
 			default:
 				assert(false);
 		}

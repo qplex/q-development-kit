@@ -14,24 +14,23 @@ import tree.TypeNode;
  */
 public class QType {
 
-	/**
-	 * For all other kinds, the QParser keyword is used. But Q does not have a
-	 * keyword for functions.
-	 */
-	public static final int FUNCTION_KIND = -1;
+	/** The semantic category of a Q type. */
+	public enum Kind {
+		INT, REAL, BOOLEAN, VOID,
+		INTARRAY, REALARRAY, BOOLEANARRAY,
+		INTMATRIX, REALMATRIX, BOOLEANMATRIX,
+		PMF, PMFARRAY, PMFMATRIX,
+		INTERFACE, INTERFACEARRAY, INTERFACEMATRIX, FUNCTION, RETURN
+	}
 
-	/** The QParser keyword for this type. */
-	public final int _kind;
+	/** The semantic kind of this type. */
+	public final Kind _kind;
 
-	public final String _qName, _cName, _xName;
 	public final Qualifier _qualifier;
 	public final Signature _signature;
 
-	private QType(int kind, String qName, String cName, String xName) {
+	private QType(Kind kind) {
 		_kind = kind;
-		_qName = qName;
-		_cName = cName;
-		_xName = xName;
 		_qualifier = null;
 		_signature = null;
 	}
@@ -39,63 +38,43 @@ public class QType {
 	/**
 	 * Instantiates a Pmf type.
 	 * 
-	 * @param kind      The QParserConstants code for this type: PMF, PMFARRAY,
-	 *                  PMFMATRIX or RETURN.
+	 * @param kind      The kind of this type: PMF, PMFARRAY, PMFMATRIX or RETURN.
 	 * @param qualifier The qualifier for this type.
 	 */
-	public QType(int kind, Qualifier qualifier) {
+	public QType(Kind kind, Qualifier qualifier) {
 		_kind = kind;
 		_qualifier = qualifier;
 		_signature = null;
-
 		switch (kind) {
-		case QParserConstants.PMF:
-			_qName = "Pmf";
-			_cName = "Pmf *";
-			_xName = "Pmf";
-			return;
-		case QParserConstants.PMFARRAY:
-			_qName = "PmfArray";
-			_cName = "PmfArray *";
-			_xName = "PmfArray";
-			return;
-		case QParserConstants.PMFMATRIX:
-			_qName = "PmfMatrix";
-			_cName = "PmfMatrix *";
-			_xName = "PmfMatrix";
-			return;
-		case QParserConstants.RETURN:
-			_qName = _cName = _xName = null;
+		case PMF:
+		case PMFARRAY:
+		case PMFMATRIX:
+		case RETURN:
 			return;
 		default:
-			assert (false);
-			_qName = _cName = _xName = null;
+			throw new IllegalArgumentException("Not a Pmf or return type: " + kind);
 		}
 	}
 
 	/**
 	 * Instantiates a function or interface type.
 	 * 
-	 * @param kind      The QParserConstants code for this type: FUNCTION_NEW,
-	 *                  INTERFACE, INTERFACEARRAY or INTERFACEMATRIX.
+	 * @param kind      The kind of this type: FUNCTION, INTERFACE, INTERFACEARRAY
+	 *                  or INTERFACEMATRIX.
 	 * @param signature The signature for this type.
 	 */
-	public QType(int kind, Signature signature) {
+	public QType(Kind kind, Signature signature) {
 		_kind = kind;
 		_qualifier = null;
 		_signature = signature;
 		switch (kind) {
-		case QParserConstants.INTERFACEARRAY:
-			_qName = _xName = "InterfaceArray";
-			_cName = "InterfaceArray *";
-			break;
-		case QParserConstants.INTERFACEMATRIX:
-			_qName = _xName = "InterfaceMatrix";
-			_cName = "InterfaceMatrix *";
-			break;
+		case INTERFACEARRAY:
+		case INTERFACEMATRIX:
+		case INTERFACE:
+		case FUNCTION:
+			return;
 		default:
-			_cName = _qName = _xName = null;
-			break;
+			throw new IllegalArgumentException("Not a function or interface type: " + kind);
 		}
 	}
 
@@ -117,114 +96,113 @@ public class QType {
 	 * @return The desired QType.
 	 */
 	public static QType getType(TypeNode node) {
-		if (node.getTokenAndNodeCount() > 1)
-			return new QType(node.getToken(0).kind, new Qualifier((QualifierNode) node.getNode(1)));
-		else {
-			switch (node.getToken(0).kind) {
-			case QParserConstants.INT:
+		Kind kind = kindForParserToken(node.getToken(0).kind);
+		if (node.getTokenAndNodeCount() == 2)  // The second item is a QualifierNode.
+			return new QType(kind, new Qualifier((QualifierNode) node.getNode(1)));
+		switch (kind) {
+			case INT:
 				return QType.INT;
-			case QParserConstants.REAL:
+			case REAL:
 				return QType.REAL;
-			case QParserConstants.BOOLEAN:
+			case BOOLEAN:
 				return QType.BOOLEAN;
-			case QParserConstants.VOID:
+			case VOID:
 				return QType.VOID;
-			case QParserConstants.INTARRAY:
+			case INTARRAY:
 				return QType.INTARRAY;
-			case QParserConstants.REALARRAY:
+			case REALARRAY:
 				return QType.REALARRAY;
-			case QParserConstants.BOOLEANARRAY:
+			case BOOLEANARRAY:
 				return QType.BOOLEANARRAY;
-			case QParserConstants.INTMATRIX:
+			case INTMATRIX:
 				return QType.INTMATRIX;
-			case QParserConstants.REALMATRIX:
+			case REALMATRIX:
 				return QType.REALMATRIX;
-			case QParserConstants.BOOLEANMATRIX:
+			case BOOLEANMATRIX:
 				return QType.BOOLEANMATRIX;
-			case QParserConstants.PMF:
+			case PMF:
 				return QType.SIMPLE_PMF;
-			case QParserConstants.PMFARRAY:
+			case PMFARRAY:
 				return QType.SIMPLE_PMFARRAY;
-			case QParserConstants.PMFMATRIX:
+			case PMFMATRIX:
 				return QType.SIMPLE_PMFMATRIX;
 			default:
-				assert (false);
-				return null;
-			}
+				throw new IllegalArgumentException("Not a source type: " + kind);
 		}
 	}
 
-	/** An instance of QType for Q int types. */
-	public static final QType INT//
-			= new QType(QParserConstants.INT, "int", "Int", "Int");
+	private static Kind kindForParserToken(int tokenKind) {
+		switch (tokenKind) {
+		case QParserConstants.INT: return Kind.INT;
+		case QParserConstants.REAL: return Kind.REAL;
+		case QParserConstants.BOOLEAN: return Kind.BOOLEAN;
+		case QParserConstants.VOID: return Kind.VOID;
+		case QParserConstants.INTARRAY: return Kind.INTARRAY;
+		case QParserConstants.REALARRAY: return Kind.REALARRAY;
+		case QParserConstants.BOOLEANARRAY: return Kind.BOOLEANARRAY;
+		case QParserConstants.INTMATRIX: return Kind.INTMATRIX;
+		case QParserConstants.REALMATRIX: return Kind.REALMATRIX;
+		case QParserConstants.BOOLEANMATRIX: return Kind.BOOLEANMATRIX;
+		case QParserConstants.PMF: return Kind.PMF;
+		case QParserConstants.PMFARRAY: return Kind.PMFARRAY;
+		case QParserConstants.PMFMATRIX: return Kind.PMFMATRIX;
+		default: throw new IllegalArgumentException("Not a Q type token: " + tokenKind);
+		}
+	}
 
-	/** An instance of QType for Q real types. */
-	public static final QType REAL//
-			= new QType(QParserConstants.REAL, "real", "Real", "Real");
+	/** The shared Q type for {@code int}. */
+	public static final QType INT = new QType(Kind.INT);
 
-	/** An instance of QType for Q boolean types. */
-	public static final QType BOOLEAN //
-			= new QType(QParserConstants.BOOLEAN, "boolean", "Boolean", "Boolean");
+	/** The shared Q type for {@code real}. */
+	public static final QType REAL = new QType(Kind.REAL);
 
-	/** An instance of QType for Q void types. */
-	public static final QType VOID //
-			= new QType(QParserConstants.VOID, "void", "void", "void");
+	/** The shared Q type for {@code boolean}. */
+	public static final QType BOOLEAN = new QType(Kind.BOOLEAN);
 
-	/** An instance of QType for Q IntArray types. */
-	public static final QType INTARRAY//
-			= new QType(QParserConstants.INTARRAY, "IntArray", "IntArray *", "IntArray");
+	/** The shared Q type for {@code void}. */
+	public static final QType VOID = new QType(Kind.VOID);
 
-	/** An instance of QType for Q RealArray types. */
-	public static final QType REALARRAY //
-			= new QType(QParserConstants.REALARRAY, "RealArray", "RealArray *", "RealArray");
+	/** The shared Q type for {@code IntArray}. */
+	public static final QType INTARRAY = new QType(Kind.INTARRAY);
 
-	/** An instance of QType for Q BooleanArray types. */
-	public static final QType BOOLEANARRAY //
-			= new QType(QParserConstants.BOOLEANARRAY, "BooleanArray", "BooleanArray *", "BooleanArray");
+	/** The shared Q type for {@code RealArray}. */
+	public static final QType REALARRAY = new QType(Kind.REALARRAY);
 
-	/** An instance of QType for Q IntMatrix types. */
-	public static final QType INTMATRIX //
-			= new QType(QParserConstants.INTMATRIX, "IntMatrix", "IntMatrix *", "IntMatrix");
+	/** The shared Q type for {@code BooleanArray}. */
+	public static final QType BOOLEANARRAY = new QType(Kind.BOOLEANARRAY);
 
-	/** An instance of QType for Q RealMatrix types. */
-	public static final QType REALMATRIX //
-			= new QType(QParserConstants.REALMATRIX, "RealMatrix", "RealMatrix *", "RealMatrix");
+	/** The shared Q type for {@code IntMatrix}. */
+	public static final QType INTMATRIX = new QType(Kind.INTMATRIX);
 
-	/** An instance of QType for Q BooleanMatrix types. */
-	public static final QType BOOLEANMATRIX //
-			= new QType(QParserConstants.BOOLEANMATRIX, "BooleanMatrix", "BooleanMatrix *", "BooleanMatrix");
+	/** The shared Q type for {@code RealMatrix}. */
+	public static final QType REALMATRIX = new QType(Kind.REALMATRIX);
 
-	/** An instance of QType for Q interface array types. */
-	public static final QType INTERFACEARRAY //
-			= new QType(QParserConstants.INTERFACEARRAY, "InterfaceArray", null, null);
+	/** The shared Q type for {@code BooleanMatrix}. */
+	public static final QType BOOLEANMATRIX = new QType(Kind.BOOLEANMATRIX);
 
-	/** An instance of QType for Q interface matrix types. */
-	public static final QType INTERFACEMATRIX //
-			= new QType(QParserConstants.INTERFACEMATRIX, "InterfaceMatrix", null, null);
+	/** The shared Q type for {@code InterfaceArray}. */
+	public static final QType INTERFACEARRAY = new QType(Kind.INTERFACEARRAY);
 
-	/** An instance of QType for Q simple (unqualified) Pmf types. */
-	public static final QType PMF //
-			= new QType(QParserConstants.PMF, "Pmf", null, null);
+	/** The shared Q type for {@code InterfaceMatrix}. */
+	public static final QType INTERFACEMATRIX = new QType(Kind.INTERFACEMATRIX);
 
-	/** An instance of QType for Q simple (unqualified) PmfArray types. */
-	public static final QType PMFARRAY //
-			= new QType(QParserConstants.PMFARRAY, "PmfArray", null, null);
+	/** The shared qualifier-free Q type for {@code Pmf}. */
+	public static final QType PMF = new QType(Kind.PMF);
 
-	/** An instance of QType for Q simple (unqualified) PmfMatrix types. */
-	public static final QType PMFMATRIX //
-			= new QType(QParserConstants.PMFMATRIX, "PmfMatrix", null, null);
+	/** The shared qualifier-free Q type for {@code PmfArray}. */
+	public static final QType PMFARRAY = new QType(Kind.PMFARRAY);
 
-	/** An instance of QType for Q simple (unqualified) Pmf types. */
-	public static final QType SIMPLE_PMF //
-			= new QType(QParserConstants.PMF, new Qualifier(1));
+	/** The shared qualifier-free Q type for {@code PmfMatrix}. */
+	public static final QType PMFMATRIX = new QType(Kind.PMFMATRIX);
 
-	/** An instance of QType for Q simple (unqualified) PmfArray types. */
-	public static final QType SIMPLE_PMFARRAY //
-			= new QType(QParserConstants.PMFARRAY, new Qualifier(1));
+	/** The shared one-variable Q type for {@code Pmf}. */
+	public static final QType SIMPLE_PMF = new QType(Kind.PMF, new Qualifier(1));
 
-	/** An instance of QType for Q simple (unqualified) PmfMatrix types. */
-	public static final QType SIMPLE_PMFMATRIX //
-			= new QType(QParserConstants.PMFMATRIX, new Qualifier(1));
+	/** The shared one-variable Q type for {@code PmfArray}. */
+	public static final QType SIMPLE_PMFARRAY = new QType(Kind.PMFARRAY, new Qualifier(1));
+
+	/** The shared one-variable Q type for {@code PmfMatrix}. */
+	public static final QType SIMPLE_PMFMATRIX = new QType(Kind.PMFMATRIX, new Qualifier(1));
 
 	/**
 	 * Reports whether this QType is scalar
@@ -233,9 +211,9 @@ public class QType {
 	 */
 	public boolean isScalar() {
 		switch (_kind) {
-		case QParserConstants.INT:
-		case QParserConstants.REAL:
-		case QParserConstants.BOOLEAN:
+		case INT:
+		case REAL:
+		case BOOLEAN:
 			return true;
 		default:
 			return false;
@@ -249,8 +227,8 @@ public class QType {
 	 */
 	public boolean isNumber() {
 		switch (_kind) {
-		case QParserConstants.INT:
-		case QParserConstants.REAL:
+		case INT:
+		case REAL:
 			return true;
 		default:
 			return false;
@@ -265,15 +243,15 @@ public class QType {
 	 */
 	public boolean isDataObject() {
 		switch (_kind) {
-		case QParserConstants.PMF:
-		case QParserConstants.PMFARRAY:
-		case QParserConstants.PMFMATRIX:
-		case QParserConstants.INTARRAY:
-		case QParserConstants.REALARRAY:
-		case QParserConstants.BOOLEANARRAY:
-		case QParserConstants.INTMATRIX:
-		case QParserConstants.REALMATRIX:
-		case QParserConstants.BOOLEANMATRIX:
+		case PMF:
+		case PMFARRAY:
+		case PMFMATRIX:
+		case INTARRAY:
+		case REALARRAY:
+		case BOOLEANARRAY:
+		case INTMATRIX:
+		case REALMATRIX:
+		case BOOLEANMATRIX:
 			return true;
 		default:
 			return false;
@@ -287,30 +265,27 @@ public class QType {
 	 * @return True if the cast is permissible. False otherwise.
 	 */
 	public boolean isAssignableFrom(QType t) {
-		if (_kind == QParserConstants.REAL && t._kind == QParserConstants.INT)
+		if (_kind == Kind.REAL && t._kind == Kind.INT)
 			return true;
 		
 		switch (_kind) {
-		case QParserConstants.PMF:
-		case QParserConstants.PMFARRAY:
-		case QParserConstants.PMFMATRIX:
+		case PMF:
+		case PMFARRAY:
+		case PMFMATRIX:
 			break;
-
-		case QParserConstants.INTERFACE:
-			if (t._kind != QType.FUNCTION_KIND)
+		case INTERFACE:
+			if (t._kind != Kind.FUNCTION)
 				return false;
 			if (t._signature == null)
 				return true;
 			return _signature.equals(t._signature);
-
-		case QParserConstants.INTERFACEARRAY:
-		case QParserConstants.INTERFACEMATRIX:
+		case INTERFACEARRAY:
+		case INTERFACEMATRIX:
 			if (_kind != t._kind)
 				return false;
 			if (t._signature == null)
 				return true;
 			return _signature.equals(t._signature);
-
 		default:
 			return _kind == t._kind;
 		}
@@ -349,7 +324,6 @@ public class QType {
 			}
 			return true;
 		}
-
 		case COMPOUND: {
 			int n1 = t._qualifier._compoundRVNames.size();
 			int n2 = this._qualifier._compoundRVNames.size();
@@ -371,7 +345,6 @@ public class QType {
 			}
 			return true;
 		}
-
 		default:
 			return true;
 		}
@@ -396,12 +369,12 @@ public class QType {
 	 */
 	public QType castTo(Qualifier qualifier) {
 		if (_qualifier == null)
-			return new QType(QParserConstants.PMF, qualifier);
+			return new QType(Kind.PMF, qualifier);
 
 		if (_qualifier._category == Qualifier.Category.COMPOUND) {
 			for (int i = 0; i < _qualifier._compoundRVNames.size(); i++) {
 				Qualifier componentQualifier = new Qualifier(_qualifier._compoundRVNames.get(i));
-				QType componentType = new QType(QParserConstants.PMF, componentQualifier);
+				QType componentType = new QType(Kind.PMF, componentQualifier);
 				QType result = componentType.castTo(qualifier);
 				if (result != null)
 					return result;
@@ -416,10 +389,9 @@ public class QType {
 			int prefixLength = qualifier._simpleRVNames.size();
 			if (prefixLength >= 1 && prefixLength <= _qualifier._simpleRVNames.size() //
 					&& isEqualIgnoreNull(qualifier._simpleRVNames, _qualifier._simpleRVNames, prefixLength))
-				return new QType(QParserConstants.PMF, new Qualifier(qualifier._simpleRVNames));
+				return new QType(Kind.PMF, new Qualifier(qualifier._simpleRVNames));
 
 			return null;
-
 		case CONDITIONAL: {
 			int numConditions = qualifier._conditions.size();
 			int numRetained = qualifier._simpleRVNames.size();
@@ -438,13 +410,13 @@ public class QType {
 			if (!isEqualIgnoreNull(availableNames, qualifier._simpleRVNames, numRetained))
 				return null;
 
-			return new QType(QParserConstants.PMF, new Qualifier(qualifier._simpleRVNames));
+			return new QType(Kind.PMF, new Qualifier(qualifier._simpleRVNames));
 		}
 		case COMPOUND:
 			for (int i = 0; i < _qualifier._compoundRVNames.size(); i++) {
 				ArrayList<String> a = _qualifier._compoundRVNames.get(i);
 				Qualifier q = new Qualifier(a);
-				QType t = new QType(QParserConstants.PMF, q);
+				QType t = new QType(Kind.PMF, q);
 				QType tt = t.castTo(qualifier);
 				if (tt != null)
 					return tt;
@@ -469,7 +441,7 @@ public class QType {
 		for (int i = 0; i < _qualifier._compoundRVNames.size(); i++) {
 			ArrayList<String> a = _qualifier._compoundRVNames.get(i);
 			Qualifier q = new Qualifier(a);
-			QType t = new QType(QParserConstants.PMF, q);
+			QType t = new QType(Kind.PMF, q);
 			if (t.castTo(qualifier) != null)
 				return i;
 		}
@@ -479,7 +451,7 @@ public class QType {
 
 	public String toString() {
 		StringBuilder b = new StringBuilder();
-		b.append(QParserConstants.tokenImage[_kind].replace("\"", ""));
+		b.append(_kind);
 		if (_qualifier != null)
 			b.append(_qualifier.toString());
 		if (_signature != null)
@@ -489,7 +461,7 @@ public class QType {
 	}
 
 	public int hashCode() {
-		return _kind;
+		return _kind.hashCode();
 	}
 
 	public boolean equals(Object obj) {

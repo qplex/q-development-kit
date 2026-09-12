@@ -16,12 +16,7 @@ public class NegativeExpressionNode extends QNode implements QParserTreeConstant
 
 		_type = getChild(1)._type;
 
-		switch (_type._kind) {
-		case INT:
-		case REAL:
-			break;
-		default:
+		if (_type._kind != QType.Kind.INT && _type._kind != QType.Kind.REAL)
 			throw new CompileException("Expected a number", getChild(0));
-		}
 	}
 }
